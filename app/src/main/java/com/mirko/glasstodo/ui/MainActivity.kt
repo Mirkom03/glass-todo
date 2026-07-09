@@ -29,76 +29,104 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.mirko.glasstodo.data.TodoRepository
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.mirko.glasstodo.data.AuthRepository
+import com.mirko.glasstodo.di.ServiceLocator
 import com.mirko.glasstodo.ui.theme.DeepNavy
 import com.mirko.glasstodo.ui.theme.GlassTheme
 import com.mirko.glasstodo.update.Updater
+import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-    private val repo by lazy { TodoRepository() }
+    private val auth by lazy { AuthRepository() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             GlassTheme {
-                var signedIn by remember { mutableStateOf(repo.isSignedIn()) }
+                // The session is the gate: Initializing is NOT "signed out" (v1 flashed the login form).
+                val status by auth.sessionStatus.collectAsStateWithLifecycle()
+
+                // enableLifecycleCallbacks=false means nothing refreshes the token on foreground but us.
+                val resumed = rememberResumed()
+                LaunchedEffect(resumed) {
+                    if (resumed) runCatching { auth.refreshSession() }
+                }
+
                 Box(Modifier.fillMaxSize()) {
-                    if (signedIn) TodoScreen(repo) else SignIn { signedIn = true }
+                    when (status) {
+                        is SessionStatus.Authenticated -> TodoScreen(rememberTodoViewModel())
+                        is SessionStatus.Initializing -> Surface(color = DeepNavy) { ShimmerList(Modifier.fillMaxSize()) }
+                        else -> SignIn(auth)   // NotAuthenticated | RefreshFailure
+                    }
                     UpdateGate()
                 }
             }
         }
     }
+}
 
-    @Composable
-    private fun SignIn(onDone: () -> Unit) {
-        var email by remember { mutableStateOf("") }
-        var pass by remember { mutableStateOf("") }
-        var error by remember { mutableStateOf<String?>(null) }
-        val scope = rememberCoroutineScope()
-        Surface(color = DeepNavy) {
-            Column(
-                Modifier.fillMaxSize().padding(24.dp),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text("Glass Todo", style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(4.dp))
-                Text("Inicia sesión una vez", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(24.dp))
-                OutlinedTextField(
-                    email, { email = it },
-                    label = { Text("Email") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+/** The ViewModel is built on the ONE TodoStore the widget also writes to. */
+@Composable
+private fun rememberTodoViewModel(): TodoViewModel {
+    val ctx = LocalContext.current.applicationContext
+    val factory = remember(ctx) {
+        viewModelFactory { initializer { TodoViewModel(ServiceLocator.store(ctx)) } }
+    }
+    return viewModel(factory = factory)
+}
+
+@Composable
+private fun SignIn(auth: AuthRepository) {
+    var email by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Surface(color = DeepNavy) {
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("Glass Todo", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(4.dp))
+            Text("Inicia sesión una vez", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(24.dp))
+            OutlinedTextField(
+                email, { email = it },
+                label = { Text("Email") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                pass, { pass = it },
+                label = { Text("Contraseña") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            error?.let {
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    pass, { pass = it },
-                    label = { Text("Contraseña") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                error?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(it, color = MaterialTheme.colorScheme.error)
-                }
-                Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = {
-                        error = null
-                        scope.launch {
-                            runCatching { repo.signIn(email.trim(), pass) }
-                                .onSuccess { onDone() }
-                                .onFailure { error = "No se pudo entrar. Revisa email/contraseña." }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Entrar") }
+                Text(it, color = MaterialTheme.colorScheme.error)
             }
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = {
+                    error = null
+                    scope.launch {
+                        // No onDone callback: signIn flips sessionStatus and the gate above re-composes.
+                        runCatching { auth.signIn(email.trim(), pass) }
+                            .onFailure { error = "No se pudo entrar. Revisa email/contraseña." }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Entrar") }
         }
     }
 }

@@ -1,8 +1,8 @@
 package com.mirko.glasstodo.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -39,16 +40,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mirko.glasstodo.data.Todo
+import com.mirko.glasstodo.domain.TodoUi
 import com.mirko.glasstodo.ui.theme.Cyan
 
 @Composable
-fun TaskRow(task: Todo, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+fun TaskRow(task: TodoUi, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier
             .fillMaxWidth()
+            .alpha(if (task.pending) 0.6f else 1f)          // written locally, not yet on the server
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.10f))   // cheap translucent card (not per-row Haze)
+            .background(Color.White.copy(alpha = 0.10f))    // cheap translucent card (not per-row Haze)
             .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically

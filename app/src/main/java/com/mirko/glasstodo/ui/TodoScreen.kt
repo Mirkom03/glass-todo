@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -28,7 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,49 +38,75 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.mirko.glasstodo.data.Todo
-import com.mirko.glasstodo.data.TodoRepository
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mirko.glasstodo.ui.theme.Cyan
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
-import kotlinx.coroutines.launch
 
+@Composable
+fun TodoScreen(vm: TodoViewModel) {
+    val state by vm.uiState.collectAsStateWithLifecycle()
+    TodoScreenContent(
+        state = state,
+        onToggle = { id, done -> vm.toggle(id, done) },
+        onAdd = { raw -> vm.add(raw) },
+        onErrorShown = { vm.errorShown() },
+    )
+}
+
+/**
+ * Stateless: the screen is a pure function of [state]. Nothing is hand-mutated here — a toggle goes
+ * to the ViewModel, lands in Room, and comes back through the same Flow. This is also the composable
+ * the Roborazzi screenshot tests render.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TodoScreen(repo: TodoRepository) {
+fun TodoScreenContent(
+    state: TodoUiState,
+    onToggle: (String, Boolean) -> Unit,
+    onAdd: (String) -> Unit,
+    onErrorShown: () -> Unit = {},
+) {
     val hazeState = rememberHazeState()
-    val scope = rememberCoroutineScope()
-    var tasks by remember { mutableStateOf<List<Todo>>(emptyList()) }
-    var input by remember { mutableStateOf("") }
+    val snackbar = remember { SnackbarHostState() }
+    var input by rememberSaveable { mutableStateOf("") }   // survives rotation, unlike v1
 
-    LaunchedEffect(Unit) { tasks = runCatching { repo.list() }.getOrDefault(emptyList()) }
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let {
+            snackbar.showSnackbar(it)
+            onErrorShown()
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         // SOURCE: everything the glass samples must be hazeSource AND drawn behind the effect
         AuroraBackground(Modifier.fillMaxSize().hazeSource(hazeState))
 
-        LazyColumn(
-            Modifier.fillMaxSize().hazeSource(hazeState),
-            contentPadding = PaddingValues(top = 104.dp, start = 16.dp, end = 16.dp, bottom = 108.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(tasks, key = { it.id }) { task ->               // STABLE KEY mandatory for animateItem
-                TaskRow(
-                    task = task,
-                    onToggle = {
-                        val newDone = !task.done
-                        tasks = tasks.map { if (it.id == task.id) it.copy(done = newDone) else it }
-                        scope.launch { runCatching { repo.setDone(task.id, newDone) } }
-                    },
-                    modifier = Modifier.animateItem(
-                        fadeInSpec = tween(220),
-                        placementSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        ),
-                        fadeOutSpec = tween(160)
+        when {
+            // Three distinct states. v1 collapsed loading + empty + network-failure into one blank screen.
+            state.isLoading -> ShimmerList(Modifier.fillMaxSize().hazeSource(hazeState))
+
+            state.isEmpty -> EmptyState(Modifier.align(Alignment.Center))
+
+            else -> LazyColumn(
+                Modifier.fillMaxSize().hazeSource(hazeState),
+                contentPadding = PaddingValues(top = 104.dp, start = 16.dp, end = 16.dp, bottom = 108.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(state.todos, key = { it.id }) { task ->       // STABLE KEY mandatory for animateItem
+                    TaskRow(
+                        task = task,
+                        onToggle = { onToggle(task.id, !task.done) },
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(220),
+                            placementSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            fadeOutSpec = tween(160)
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -89,7 +117,9 @@ fun TodoScreen(repo: TodoRepository) {
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
         )
 
-        // GLASS add bar (bottom) — matches the mockup
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp))
+
+        // GLASS add bar (bottom)
         Row(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -117,17 +147,9 @@ fun TodoScreen(repo: TodoRepository) {
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = {
-                val raw = input.trim()
-                if (raw.isNotBlank()) {
-                    val proj = Regex("#(\\S+)").find(raw)?.groupValues?.get(1)
-                    val title = raw.replace(Regex("#\\S+"), "").trim().ifBlank { raw }
-                    input = ""
-                    scope.launch {
-                        runCatching {
-                            repo.add(title, proj)
-                            tasks = repo.list()
-                        }
-                    }
+                if (input.isNotBlank()) {
+                    onAdd(input)          // parsing the #proyecto tag lives in domain/ParseInput, not here
+                    input = ""            // the row appears immediately: optimistic write to Room
                 }
             }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir", tint = Cyan)
