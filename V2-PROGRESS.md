@@ -17,7 +17,8 @@ Goal: rebuild the widget+app "the right way" so it's bug-free + self-verifying (
 ## Key facts
 - **Repo:** github.com/Mirkom03/glass-todo (PUBLIC). Default branch `main`.
 - **Supabase:** project `aide-studio` (ref `wkjfnpjklmikswgofekq`), reachable via the Supabase MCP. Table `public.todos` + owner-scoped RLS (**do NOT touch the RLS**). Realtime is now ENABLED on it (see step 5).
-- **App login (email/password auth):** `mirko@glasstodo.app` / `GlassTodoMirko2026!` (dedicated user, uid `511b897e-afb2-4745-91f6-d8103ad4aefd`, has 4 seeded todos). NOT `mirkomilano2003@` (that is Mirko's CRM account — already exists, can't reuse).
+- **App login (email/password auth):** `mirko@glasstodo.app` (dedicated user, uid `511b897e-afb2-4745-91f6-d8103ad4aefd`). NOT `mirkomilano2003@` (that is Mirko's CRM account — already exists, can't reuse).
+  **The password is NOT in this repo.** It lives in `C:/Users/mirko/keys/glasstodo-app.pass`. It used to be written out here in plain text — in a PUBLIC repo — so it was rotated on 2026-07-09; the old one is dead. Never paste a credential into a tracked file again: git history keeps it forever, which is why rotating was the only real fix.
 - **CI:** `.github/workflows/android-ci.yml` = JVM tests (fast, the merge gate). `.github/workflows/release.yml` = tag `v*` → APK on Releases. Secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` already set on the repo.
 - **Shipped app:** v1.0.4 (installed on Mirko's phone, works; its widget still has the tap bugs — that's what v2 fixes). v1.0.4 also has an in-app auto-updater, so once v2 ships as a higher version tag, the phone can update itself.
 - **BUILD ENV: there IS a local toolchain now (2026-07-09).** No more blind builds.
