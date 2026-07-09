@@ -12,9 +12,10 @@ import androidx.work.WorkerParameters
 import androidx.glance.appwidget.updateAll
 import com.mirko.glasstodo.data.AuthRepository
 import com.mirko.glasstodo.di.ServiceLocator
+import com.mirko.glasstodo.domain.isPermanent
 import com.mirko.glasstodo.widget.TodoGlanceWidget
-import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Safety net ONLY. While the app process is alive, RealtimeSync is the live path — do not also poll,
@@ -29,14 +30,17 @@ import java.util.concurrent.TimeUnit
 class TodoSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result = try {
+        val store = ServiceLocator.store(applicationContext)   // also guarantees SupabaseClient.init()
         AuthRepository().refreshSession()
-        ServiceLocator.store(applicationContext).refresh()
+        store.refresh()
         TodoGlanceWidget().updateAll(applicationContext)
         Result.success()
-    } catch (e: IOException) {
-        Result.retry()                                  // offline / transient: exponential backoff
+    } catch (e: CancellationException) {
+        throw e                                         // WorkManager stopped us; do not swallow it
     } catch (e: Exception) {
-        Result.failure()                                // no session, etc. — retrying will not help
+        // Offline (IOException), 5xx, and an expired token (401 — the next run refreshes it) are all
+        // worth retrying with backoff. Only a permanent 4xx data failure is worth giving up on.
+        if (e.isPermanent()) Result.failure() else Result.retry()
     }
 
     companion object {
