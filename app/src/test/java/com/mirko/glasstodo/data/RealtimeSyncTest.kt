@@ -46,10 +46,14 @@ class RealtimeSyncTest {
     private fun sync(
         store: TodoStore,
         scope: CoroutineScope,
+        authenticated: () -> Flow<Boolean> = { flowOf(true) },
         snapshots: () -> Flow<List<TodoDto>> = { emptyFlow() },
         status: () -> Flow<Realtime.Status> = { emptyFlow() },
         onSnapshot: suspend () -> Unit = {},
-    ) = RealtimeSync(store, scope, awaitAuth = {}, snapshots = snapshots, connectionStatus = status, onSnapshot = onSnapshot)
+    ) = RealtimeSync(store, scope, authenticated, snapshots, status, onSnapshot)
+
+    private fun storeWith(remote: TodoRemote, dispatcher: UnconfinedTestDispatcher) =
+        TodoStore(db.todoDao(), remote, auth, io = dispatcher)
 
     @Before fun setup() {
         db = Room.inMemoryDatabaseBuilder(
@@ -60,8 +64,9 @@ class RealtimeSyncTest {
     @After fun teardown() = db.close()
 
     @Test fun snapshot_landsInRoom_andNotifies() = runTest {
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val store = TodoStore(db.todoDao(), CountingRemote(), auth, io = UnconfinedTestDispatcher(testScheduler))
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
+        val store = storeWith(CountingRemote(), d)
         var notified = 0
 
         sync(store, scope, snapshots = { flowOf(listOf(dto("1", "desde realtime"))) }, onSnapshot = { notified++ }).start()
@@ -74,10 +79,40 @@ class RealtimeSyncTest {
         scope.cancel()
     }
 
+    @Test fun signedOut_neverSubscribes_soRoomIsNotWiped() = runTest {
+        db.todoDao().upsert(TodoEntity(id = "local", userId = "u1", title = "cache offline"))
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
+        val store = storeWith(CountingRemote(), d)
+        var snapshotsSubscribed = 0
+
+        // Anon RLS would return [] and reconcile would delete every synced row — must never happen.
+        sync(store, scope, authenticated = { flowOf(false) }, snapshots = {
+            snapshotsSubscribed++; flowOf(emptyList())
+        }).start()
+
+        assertEquals(0, snapshotsSubscribed)
+        assertEquals(listOf("cache offline"), db.todoDao().observeAll().first().map { it.title })
+        scope.cancel()
+    }
+
+    @Test fun signIn_startsSyncing() = runTest {
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
+        val store = storeWith(CountingRemote(), d)
+
+        sync(store, scope, authenticated = { flowOf(false, true) },
+            snapshots = { flowOf(listOf(dto("1", "tras login"))) }).start()
+
+        assertEquals(listOf("tras login"), db.todoDao().observeAll().first().map { it.title })
+        scope.cancel()
+    }
+
     @Test fun snapshotFailure_keepsExistingRoomData_andDoesNotCrash() = runTest {
         db.todoDao().upsert(TodoEntity(id = "local", userId = "u1", title = "no me borres"))
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val store = TodoStore(db.todoDao(), CountingRemote(), auth, io = UnconfinedTestDispatcher(testScheduler))
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
+        val store = storeWith(CountingRemote(), d)
 
         sync(store, scope, snapshots = { flow { throw IllegalStateException("websocket boom") } }).start()
 
@@ -86,9 +121,10 @@ class RealtimeSyncTest {
     }
 
     @Test fun firstConnect_doesNotRefetch() = runTest {
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
         val remote = CountingRemote()
-        val store = TodoStore(db.todoDao(), remote, auth, io = UnconfinedTestDispatcher(testScheduler))
+        val store = storeWith(remote, d)
 
         sync(store, scope, status = { flowOf(Realtime.Status.CONNECTING, Realtime.Status.CONNECTED) }).start()
 
@@ -97,9 +133,10 @@ class RealtimeSyncTest {
     }
 
     @Test fun reconnectAfterDrop_pullsOnce_toCloseTheGap() = runTest {
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val remote = CountingRemote(serverRows = listOf(dto("1", "perdido durante la caída")))
-        val store = TodoStore(db.todoDao(), remote, auth, io = UnconfinedTestDispatcher(testScheduler))
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
+        val remote = CountingRemote(serverRows = listOf(dto("1", "perdido durante la caida")))
+        val store = storeWith(remote, d)
 
         sync(store, scope, status = {
             flowOf(
@@ -110,14 +147,15 @@ class RealtimeSyncTest {
         }).start()
 
         assertEquals(1, remote.listCalls)
-        assertEquals("perdido durante la caída", db.todoDao().observeAll().first()[0].title)
+        assertEquals("perdido durante la caida", db.todoDao().observeAll().first()[0].title)
         scope.cancel()
     }
 
     @Test fun disconnectBeforeAnyConnect_doesNotRefetch() = runTest {
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
         val remote = CountingRemote()
-        val store = TodoStore(db.todoDao(), remote, auth, io = UnconfinedTestDispatcher(testScheduler))
+        val store = storeWith(remote, d)
 
         sync(store, scope, status = { flowOf(Realtime.Status.DISCONNECTED, Realtime.Status.CONNECTED) }).start()
 

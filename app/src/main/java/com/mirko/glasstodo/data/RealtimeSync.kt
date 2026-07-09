@@ -4,6 +4,7 @@ import com.mirko.glasstodo.data.remote.TodoDto
 import io.github.jan.supabase.SupabaseClient as KtClient
 import io.github.jan.supabase.annotations.SupabaseExperimental
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.realtime
@@ -12,6 +13,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -19,26 +23,31 @@ import kotlinx.coroutines.launch
  * widget poll as the live path while the process is alive; TodoSyncWorker stays as the safety net
  * for the process-dead case.
  *
- * The Supabase types are injected as plain flows ([snapshots], [connectionStatus]) so the sync
- * policy is unit-testable on the JVM without a websocket. Build the real one with [RealtimeSync.from].
+ * The Supabase types are injected as plain flows ([snapshots], [connectionStatus], [authenticated])
+ * so the sync policy is unit-testable on the JVM without a websocket. Build the real one with
+ * [RealtimeSync.from].
  */
 class RealtimeSync(
     private val store: TodoStore,
     private val scope: CoroutineScope,               // app-lived scope, NOT a recomposing composable scope
-    private val awaitAuth: suspend () -> Unit,
+    private val authenticated: () -> Flow<Boolean>,
     private val snapshots: () -> Flow<List<TodoDto>>,
     private val connectionStatus: () -> Flow<Realtime.Status>,
     private val onSnapshot: suspend () -> Unit = {}, // step 8 wires the Glance widget's updateAll here
 ) {
     fun start(): Job = scope.launch {
-        awaitAuth()                                   // subscribe with a real JWT, or RLS yields nothing
         launch { refetchOnReconnect() }
-        snapshots()
-            .catch { /* initial-select/decode failure: keep Room as-is, the worker refresh covers it */ }
-            .collect { rows ->
-                store.reconcile(rows)
-                onSnapshot()
-            }
+        authenticated().collectLatest { signedIn ->
+            // NEVER subscribe without a session: RLS would return an empty set for the anon role and
+            // reconcile() would wipe every local row. Same family as the v1 empty-widget bug.
+            if (!signedIn) return@collectLatest
+            snapshots()
+                .catch { /* initial-select/decode failure: keep Room as-is, the worker refresh covers it */ }
+                .collect { rows ->
+                    store.reconcile(rows)
+                    onSnapshot()
+                }
+        }
     }
 
     /**
@@ -56,7 +65,7 @@ class RealtimeSync(
                 Realtime.Status.CONNECTED -> {
                     if (droppedAfterConnect) {
                         droppedAfterConnect = false
-                        runCatching { store.refresh() }
+                        runCatching { store.refresh() }   // no session yet -> requireUid throws -> ignored
                     }
                     everConnected = true
                 }
@@ -76,7 +85,13 @@ class RealtimeSync(
         ) = RealtimeSync(
             store = store,
             scope = scope,
-            awaitAuth = { client.auth.awaitInitialization() },
+            // distinctUntilChanged: Authenticated is re-emitted on every token refresh (~hourly) and we
+            // must not tear down and rebuild the realtime channel each time.
+            authenticated = {
+                client.auth.sessionStatus
+                    .map { it is SessionStatus.Authenticated }
+                    .distinctUntilChanged()
+            },
             // RLS scopes the rows to the logged-in user, so no client-side filter is needed.
             snapshots = { client.from("todos").selectAsFlow(TodoDto::id) },
             connectionStatus = { client.realtime.status },
