@@ -12,12 +12,23 @@ Goal: rebuild the widget+app "the right way" so it's bug-free + self-verifying (
 - **App login (email/password auth):** `mirko@glasstodo.app` / `GlassTodoMirko2026!` (dedicated user, uid `511b897e-afb2-4745-91f6-d8103ad4aefd`, has 4 seeded todos). NOT `mirkomilano2003@` (that is Mirko's CRM account — already exists, can't reuse).
 - **CI:** `.github/workflows/android-ci.yml` = JVM tests (fast, the merge gate). `.github/workflows/release.yml` = tag `v*` → APK on Releases. Secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` already set on the repo.
 - **Shipped app:** v1.0.4 (installed on Mirko's phone, works; its widget still has the tap bugs — that's what v2 fixes). v1.0.4 also has an in-app auto-updater, so once v2 ships as a higher version tag, the phone can update itself.
-- **BUILD ENV: there is NO local Android SDK.** Everything is verified via CI. There is no emulator/device to test on except Mirko's phone. Build blind → CI verifies.
+- **BUILD ENV: there IS a local toolchain now (2026-07-09).** No more blind builds.
+  ```bash
+  export JAVA_HOME="C:/Users/mirko/tools/jdk-17.0.19+10"
+  export ANDROID_HOME="C:/Users/mirko/tools/android-sdk"
+  cd C:/Users/mirko/glass-todo && ./gradlew testDebugUnitTest --console=plain
+  ```
+  Installed under `C:/Users/mirko/tools/` (self-contained, no admin, not on PATH): Temurin JDK 17, Gradle 8.11.1, Android SDK (`platforms;android-36`, `build-tools;35.0.0`, `platform-tools`). `local.properties` carries `sdk.dir` (gitignored). The repo now has a Gradle wrapper, so `./gradlew` is enough. First run takes ~12 min (dependency + Robolectric jar downloads); after that it is seconds. CI remains the merge gate, but **run the suite locally before pushing** — it is faster and it survives GitHub outages.
+- There is still no emulator/device except Mirko's phone, so the JVM tier is what you can actually run.
 
 ## The verify loop (how to continue every step)
 ```bash
 cd C:/Users/mirko/glass-todo
 # ...edit files...
+# 1) run the suite LOCALLY first (seconds, once warm):
+JAVA_HOME="C:/Users/mirko/tools/jdk-17.0.19+10" ANDROID_HOME="C:/Users/mirko/tools/android-sdk" \
+  ./gradlew testDebugUnitTest --console=plain
+# 2) then push and let CI confirm:
 git add -A   # NOT `commit -a` — that skips new files
 git -c user.name="Mirkom03" -c user.email="mirkomilano2003@gmail.com" commit -m "..."
 git push
