@@ -1,6 +1,112 @@
-# Glass Todo — v2 rebuild progress & handoff
+# Listo (antes Glass Todo) — progreso y handoff
 
-**Status (2026-07-09): steps 1–9 DONE and green. v1.1.0 tagged and released (signed). 45/45 tests green. What remains is optional: 7c (Roborazzi goldens), 10 (polish), 11 (emulator tier), 12 (hardening).**
+> **Cambio de nombre:** la app se llama **Listo** desde v1.3.0. El repo, el `applicationId`
+> (`com.mirko.glasstodo`) y el paquete Kotlin siguen igual **a propósito**: cambiarlos rompe la
+> actualización en sitio y obliga a desinstalar. No los toques.
+
+---
+
+# ⏭️ EMPIEZA AQUÍ — trabajo pendiente (rechazado por Mirko el 2026-07-09)
+
+v1.3.0 está publicada y funciona, pero Mirko rechazó **dos cosas**. Ninguna está arreglada.
+
+## 1. El widget no se parece a la app  ← BUG, no opinión
+
+**Causa raíz, ya localizada:** `TodoGlanceWidget.provideGlance` envuelve el contenido en
+`GlanceTheme { ... }` **sin pasar `colors`**. Sin `colors`, Glance usa los **colores dinámicos del
+sistema (Material You)**: fondo lavanda claro, acentos del wallpaper. La app, en cambio, se
+compromete a una identidad propia (`ListoTheme`: fondo `Ink #0A0B0F`, tinta `Chalk`, un único acento
+`Cyan #35E0F0`). Resultado: parecen dos apps distintas. Mirko: *«parecen totalmente diferentes»*.
+
+**Arreglo (API ya verificada contra la fuente de Glance 1.1.1):**
+
+```kotlin
+// glance-material3 YA está en app/build.gradle.kts (libs.glance.material3)
+// androidx.glance.material3.ColorProviders(light: ColorScheme, dark: ColorScheme): ColorProviders
+// androidx.glance.GlanceTheme(colors: ColorProviders, content: @Composable () -> Unit)
+
+// 1) exponer el esquema de ui/theme/Theme.kt (hoy es `private val Scheme`)
+val ListoScheme = darkColorScheme(/* … ya está escrito … */)
+
+// 2) mismo esquema en claro y oscuro: la app se compromete a un solo mundo visual
+val ListoGlanceColors = ColorProviders(light = ListoScheme, dark = ListoScheme)
+
+// 3) en TodoGlanceWidget.provideGlance y en TODOS los tests/screenshots:
+GlanceTheme(colors = ListoGlanceColors) { WidgetGlanceContent(...) }
+```
+
+Sitios a tocar: `widget/TodoGlanceWidget.kt`, `widget/WidgetScreenshotTest.kt`,
+`widget/WidgetActionUnitTest.kt` (10 usos de `GlanceTheme { }`).
+
+**No basta con la paleta.** Además hay que igualar el lenguaje visual, porque hoy divergen:
+
+| | App | Widget hoy | Debería |
+|---|---|---|---|
+| Cabecera | nº pendientes 52sp + regla de progreso | «Listo» 17sp bold | misma idea, a escala |
+| Etiqueta | rótulo `PERSONAL` en mayúsculas, `Chalk3` | idem 9sp | ok |
+| Check | círculo que se rellena de cian | `ic_check_on/off` (drawables) | mismo círculo |
+| Fondo | `Ink` plano | `widgetBackground` dinámico | `Ink` |
+| Fichas de etiqueta | — | `secondaryContainer` dinámico | superficie `InkRaised` + hairline |
+
+Sugerencia: llevar la **regla de progreso** también al widget (es la firma de la app) y usar el mismo
+círculo de check dibujado, no los vectores `ic_check_*`.
+
+## 2. El logo es malo  ← rechazado sin matices
+
+Mirko: *«el logo es una mierda hazlo bien»*. El actual (`res/drawable/ic_launcher_foreground.xml`)
+es un tick con contraste de trazo + un punto. **Un check sigue siendo el símbolo por defecto de
+cualquier app de tareas**, por muy bien dibujado que esté. Está anotado en
+`Sistema/criterio-mirko.md` §40.
+
+**Cómo hacerlo bien la próxima vez** (§40 + §1 del criterio: proponer y confirmar antes de construir):
+
+1. Proponer **≥3 direcciones distintas**, no 3 variantes del mismo check.
+2. **Renderizarlas al tamaño real** con `IconScreenshotTest` (96 px, no ampliadas) y mirarlas.
+3. Publicar un Artifact con los tres a 96 px y a 288 px, y que Mirko elija.
+4. Solo entonces construir adaptive + monochrome.
+
+Direcciones que aún NO se han explorado (ninguna es un check):
+- La **regla de progreso** de la app como marca: una barra que se llena. Es lo único visualmente
+  propio que ya tiene el producto.
+- «Las cosas hechas se hunden»: dos barras, la de abajo tachada/hundida.
+- Un monograma **L** construido con la retícula de la app (barra + hairline).
+- El punto de «Listo.» como protagonista, no como adorno.
+
+**Restricciones duras del icono:** viewport 108×108, todo dentro del círculo seguro de 66dp;
+tres ficheros (`ic_launcher_foreground`, `ic_launcher_monochrome`, `mipmap-anydpi-v26/ic_launcher*`);
+el monochrome tiene que ser **un solo color plano**; se juzga a 96 px.
+
+---
+
+## Estado real (verificado)
+
+- `v1.3.0` publicada y firmada (cert `e6828727…ac5d`, la misma desde v1.1.0 → actualiza en sitio).
+- **77/77 tests verdes** en local y en CI.
+- Repo limpio, `main` == `origin/main`.
+- Lo que sí quedó bien y no hay que rehacer: modo etiquetas del widget (concepto B, elegido por
+  Mirko), filtro persistido por widget, urgencia, sugerencia de etiquetas, orden en SQL.
+
+## Cómo mirar lo que construyes (esto es nuevo y es lo más útil)
+
+No hay emulador. `Roborazzi` renderiza las pantallas reales, el widget real (vía `GlanceRemoteViews`)
+y el icono real a PNG sobre la JVM:
+
+```bash
+export JAVA_HOME="C:/Users/mirko/tools/jdk-17.0.19+10"
+export ANDROID_HOME="C:/Users/mirko/tools/android-sdk"
+cd C:/Users/mirko/glass-todo && ./gradlew recordRoborazziDebug --console=plain
+# PNGs en app/build/outputs/roborazzi/ — ábrelos con la tool Read, se ven.
+```
+
+Así se cazaron dos defectos que 62 tests verdes no vieron (el `+` invisible del widget y la etiqueta
+repetida al filtrar). **Mira siempre los renders antes de decir que algo está listo.**
+
+Ojo: las filas del widget se renderizan con `lazy = false` (una `Column`) porque un adaptador de
+colección de RemoteViews no se puebla fuera de un `AppWidgetHost`. Cambia el contenedor, no las filas.
+
+---
+
+**Status v2 (2026-07-09): pasos 1–9 DONE y verdes. Lo opcional que queda: 10 (pulido), 11 (tier de emulador), 12 (hardening).**
 
 ### A pre-ship adversarial audit found a data-loss BLOCKER — fixed in `d8ae5ed`
 Ten hypotheses were reviewed by parallel agents and adversarially verified; eight were refuted (including plausible-sounding ones: `NOT IN ()` SQL, a crashing realtime collector, `allowBackup` leaking the session). Two survived:
