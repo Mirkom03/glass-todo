@@ -7,4 +7,5 @@ data class TodoUi(
     val project: String?,
     val done: Boolean,
     val pending: Boolean = false,   // true while a local write hasn't reached the server yet
+    val priority: Int = 0,          // higher = more urgent; drives the sort order
 )

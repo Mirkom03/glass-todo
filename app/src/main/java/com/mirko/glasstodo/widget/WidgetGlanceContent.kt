@@ -3,6 +3,7 @@ package com.mirko.glasstodo.widget
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.Image
@@ -10,7 +11,6 @@ import androidx.glance.ImageProvider
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.CheckBox
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
@@ -25,6 +25,7 @@ import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
+import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextDecoration
@@ -34,6 +35,10 @@ import com.mirko.glasstodo.domain.TodoUi
 
 /** The widget test matches the '+' button on this. Keep them in sync. */
 const val ADD_BUTTON_DESCRIPTION = "Añadir tarea"
+
+/** Content descriptions of the per-row state icon — the widget test matches on these. */
+const val DONE_ICON_DESCRIPTION = "Hecha"
+const val PENDING_ICON_DESCRIPTION = "Pendiente"
 
 /**
  * The ONE composable the real widget and the unit tests both render — that is what makes the widget
@@ -95,11 +100,6 @@ private fun TodoRow(todo: TodoUi) {
             // per-row fill-in extras merging into it; launchers that drop the merge left
             // `getStringExtra(EXTRA_ID) ?: return` and the checkbox did nothing. Glance registers one
             // typed action per row — no template, nothing to merge — and the whole row is the target.
-            //
-            // The action lives on the Row, not on the CheckBox, for two reasons: Glance wraps a
-            // checkbox's action in an internal CompoundButtonAction that no public test API can
-            // inspect (so the wiring would be unverifiable), and a full-width row is a far better
-            // tap target on a home screen.
             .clickable(
                 actionRunCallback<ToggleTodoAction>(
                     actionParametersOf(ToggleTodoAction.idKey to todo.id)
@@ -107,12 +107,25 @@ private fun TodoRow(todo: TodoUi) {
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CheckBox(
-            checked = todo.done,
-            onCheckedChange = null,          // visual only; the Row owns the click
-            text = todo.title + (todo.project?.let { "  #$it" } ?: ""),
+        // Deliberately NOT Glance's CheckBox. On API 31+ its translator makes the checkbox View both
+        // the text view AND the action target, and a CompoundButton is clickable by default — so a
+        // decorative CheckBox (onCheckedChange = null) swallows the touch across the whole row and
+        // the Row's PendingIntent never fires. An ImageView and a TextView are not clickable, so the
+        // tap reaches the Row. (This is exactly the bug v1.1.0 shipped with.)
+        Image(
+            provider = ImageProvider(if (todo.done) R.drawable.ic_check_on else R.drawable.ic_check_off),
+            contentDescription = if (todo.done) DONE_ICON_DESCRIPTION else PENDING_ICON_DESCRIPTION,
+            // ic_check_off is a bare white stroke — invisible on the light Material You widget
+            // background — so tint it. ic_check_on is two-tone on purpose and reads on both themes.
+            colorFilter = if (todo.done) null else ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+            modifier = GlanceModifier.size(22.dp),
+        )
+        Spacer(GlanceModifier.width(10.dp))
+        Text(
+            todo.title + (todo.project?.let { "  #$it" } ?: ""),
+            maxLines = 2,
             style = TextStyle(
-                color = GlanceTheme.colors.onSurface,
+                color = if (todo.done) GlanceTheme.colors.onSurfaceVariant else GlanceTheme.colors.onSurface,
                 fontSize = 14.sp,
                 textDecoration = if (todo.done) TextDecoration.LineThrough else null,
             ),

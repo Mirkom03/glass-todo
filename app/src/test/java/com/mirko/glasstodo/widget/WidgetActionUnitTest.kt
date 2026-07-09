@@ -2,9 +2,9 @@ package com.mirko.glasstodo.widget
 
 import androidx.glance.GlanceTheme
 import androidx.glance.action.actionParametersOf
-import androidx.glance.appwidget.testing.unit.assertIsChecked
-import androidx.glance.appwidget.testing.unit.assertIsNotChecked
 import androidx.glance.appwidget.testing.unit.hasRunCallbackClickAction
+import androidx.glance.appwidget.testing.unit.isChecked
+import androidx.glance.appwidget.testing.unit.isNotChecked
 import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.glance.testing.unit.assertHasStartActivityClickAction
 import androidx.glance.testing.unit.hasContentDescription
@@ -15,8 +15,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * The regression test for the v1 bug. No launcher, no emulator: it renders the exact composable the
- * real widget renders and asserts the click actions that get registered.
+ * The regression tests for the widget. No launcher, no emulator: it renders the exact composable the
+ * real widget renders and asserts what gets registered on it.
  *
  * Robolectric is REQUIRED even though `runGlanceAppWidgetUnitTest` is a "JVM" API: Glance's
  * `ActionParameters` is backed by a real `android.os.Bundle`, so on the plain JVM every test dies
@@ -47,12 +47,35 @@ class WidgetActionUnitTest {
         ).assertDoesNotExist()
     }
 
+    /**
+     * v1.1.0's real bug. A Glance `CheckBox` becomes an `android.widget.CheckBox`, and on API 31+ its
+     * translator makes that same View both the text view and the action target. `CompoundButton` is
+     * clickable by default, so a decorative checkbox (`onCheckedChange = null`) ate the touch across
+     * the whole row and the Row's own PendingIntent never fired: tapping did nothing.
+     *
+     * The row must therefore contain NO checkable node at all — only an image and a text.
+     */
     @Test
-    fun doneStateRendersPerRow() = runGlanceAppWidgetUnitTest {
+    fun rowsContainNoCheckableNodeThatCouldSwallowTheTap() = runGlanceAppWidgetUnitTest {
         provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, luz)) } }
 
-        onNode(hasText("Comprar pan")).assertIsNotChecked()
-        onNode(hasText("Pagar luz")).assertIsChecked()
+        onNode(isChecked()).assertDoesNotExist()
+        onNode(isNotChecked()).assertDoesNotExist()
+    }
+
+    @Test
+    fun doneStateIsShownByTheRowIcon() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, luz)) } }
+
+        onNode(hasContentDescription(PENDING_ICON_DESCRIPTION)).assertExists()   // "Comprar pan"
+        onNode(hasContentDescription(DONE_ICON_DESCRIPTION)).assertExists()      // "Pagar luz"
+    }
+
+    @Test
+    fun aListWithNothingDoneShowsNoDoneIcon() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan)) } }
+
+        onNode(hasContentDescription(DONE_ICON_DESCRIPTION)).assertDoesNotExist()
     }
 
     @Test

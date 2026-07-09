@@ -7,7 +7,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TodoDao {
-    @Query("SELECT * FROM todos WHERE deleted = 0 ORDER BY createdAt DESC")
+    // Pending first, most urgent first, newest first; everything done sinks to the bottom.
+    // Ordering lives in SQL so the app and the widget can never disagree about it.
+    @Query(
+        """
+        SELECT * FROM todos WHERE deleted = 0
+        ORDER BY done ASC, priority DESC, createdAt DESC
+        """
+    )
     fun observeAll(): Flow<List<TodoEntity>>           // the ONLY read path for UI + widget
 
     @Query("SELECT * FROM todos WHERE syncStatus = 'PENDING'")

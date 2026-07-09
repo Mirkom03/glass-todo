@@ -100,6 +100,29 @@ class TodoStoreTest {
         assertEquals(0, db.todoDao().observeAll().first().size)
     }
 
+    // --- ordering: pending first, most urgent first, newest first; done sinks to the bottom ---
+
+    @Test fun observeAll_ordersPendingByUrgencyAndPushesDoneToTheEnd() = runTest {
+        val dao = db.todoDao()
+        dao.upsert(TodoEntity(id = "vieja", userId = "u1", title = "vieja", priority = 0, createdAt = 100))
+        dao.upsert(TodoEntity(id = "nueva", userId = "u1", title = "nueva", priority = 0, createdAt = 200))
+        dao.upsert(TodoEntity(id = "urgente", userId = "u1", title = "urgente", priority = 2, createdAt = 50))
+        dao.upsert(TodoEntity(id = "media", userId = "u1", title = "media", priority = 1, createdAt = 10))
+        dao.upsert(TodoEntity(id = "hecha-urgente", userId = "u1", title = "hecha-urgente", priority = 3, done = true, createdAt = 300))
+        dao.upsert(TodoEntity(id = "hecha", userId = "u1", title = "hecha", priority = 0, done = true, createdAt = 400))
+
+        assertEquals(
+            // urgency wins among the pending ones; ties break on newest; done last, whatever its urgency
+            listOf("urgente", "media", "nueva", "vieja", "hecha-urgente", "hecha"),
+            dao.observeAll().first().map { it.title }
+        )
+    }
+
+    @Test fun observeAll_exposesPriorityToTheUi() = runTest {
+        db.todoDao().upsert(TodoEntity(id = "1", userId = "u1", title = "a", priority = 2))
+        assertEquals(2, store(FakeRemote()).observeTodos().first()[0].priority)
+    }
+
     // --- drainPending(): the regression tests for the data-loss bug (PENDING was a graveyard) ---
 
     @Test fun drain_pushesAnAddThatWasMadeOffline() = runTest {

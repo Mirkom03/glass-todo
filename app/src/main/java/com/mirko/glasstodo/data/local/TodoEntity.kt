@@ -26,4 +26,5 @@ fun TodoEntity.toUi() = TodoUi(
     project = project,
     done = done,
     pending = syncStatus == SyncStatus.PENDING,
+    priority = priority,
 )
