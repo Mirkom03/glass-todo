@@ -65,13 +65,19 @@ class RealtimeSyncTest {
 
     @After fun teardown() = db.close()
 
+    // Every test joins the job start() returns. Unconfined is not enough: Room's suspend DAO hops to
+    // its own query executor, so without join() the assertions race the writes — and a coroutine that
+    // outlives the test hits the closed in-memory DB and poisons the NEXT test
+    // ("attempt to re-open an already-closed object"). All the injected flows here are finite, so
+    // the job always completes.
+
     @Test fun snapshot_landsInRoom_andNotifies() = runTest {
         val d = UnconfinedTestDispatcher(testScheduler)
         val scope = CoroutineScope(d)
         val store = storeWith(CountingRemote(), d)
         var notified = 0
 
-        sync(store, scope, snapshots = { flowOf(listOf(dto("1", "desde realtime"))) }, onSnapshot = { notified++ }).start()
+        sync(store, scope, snapshots = { flowOf(listOf(dto("1", "desde realtime"))) }, onSnapshot = { notified++ }).start().join()
 
         val rows = db.todoDao().observeAll().first()
         assertEquals(1, rows.size)
@@ -91,7 +97,7 @@ class RealtimeSyncTest {
         // Anon RLS would return [] and reconcile would delete every synced row — must never happen.
         sync(store, scope, authenticated = { flowOf(false) }, snapshots = {
             snapshotsSubscribed++; flowOf(emptyList())
-        }).start()
+        }).start().join()
 
         assertEquals(0, snapshotsSubscribed)
         assertEquals(listOf("cache offline"), db.todoDao().observeAll().first().map { it.title })
@@ -104,7 +110,7 @@ class RealtimeSyncTest {
         val store = storeWith(CountingRemote(), d)
 
         sync(store, scope, authenticated = { flowOf(false, true) },
-            snapshots = { flowOf(listOf(dto("1", "tras login"))) }).start()
+            snapshots = { flowOf(listOf(dto("1", "tras login"))) }).start().join()
 
         assertEquals(listOf("tras login"), db.todoDao().observeAll().first().map { it.title })
         scope.cancel()
@@ -116,7 +122,7 @@ class RealtimeSyncTest {
         val scope = CoroutineScope(d)
         val store = storeWith(CountingRemote(), d)
 
-        sync(store, scope, snapshots = { flow { throw IllegalStateException("websocket boom") } }).start()
+        sync(store, scope, snapshots = { flow { throw IllegalStateException("websocket boom") } }).start().join()
 
         assertEquals(listOf("no me borres"), db.todoDao().observeAll().first().map { it.title })
         scope.cancel()
@@ -128,7 +134,7 @@ class RealtimeSyncTest {
         val remote = CountingRemote()
         val store = storeWith(remote, d)
 
-        sync(store, scope, status = { flowOf(Realtime.Status.CONNECTING, Realtime.Status.CONNECTED) }).start()
+        sync(store, scope, status = { flowOf(Realtime.Status.CONNECTING, Realtime.Status.CONNECTED) }).start().join()
 
         assertEquals(0, remote.listCalls)                          // the snapshot flow's initial select covers it
         scope.cancel()
@@ -146,7 +152,7 @@ class RealtimeSyncTest {
                 Realtime.Status.DISCONNECTED,    // events missed here are never re-emitted
                 Realtime.Status.CONNECTED,       // -> pull once
             )
-        }).start()
+        }).start().join()
 
         assertEquals(1, remote.listCalls)
         assertEquals("perdido durante la caida", db.todoDao().observeAll().first()[0].title)
@@ -159,7 +165,7 @@ class RealtimeSyncTest {
         val remote = CountingRemote()
         val store = storeWith(remote, d)
 
-        sync(store, scope, status = { flowOf(Realtime.Status.DISCONNECTED, Realtime.Status.CONNECTED) }).start()
+        sync(store, scope, status = { flowOf(Realtime.Status.DISCONNECTED, Realtime.Status.CONNECTED) }).start().join()
 
         assertEquals(0, remote.listCalls)                          // cold start is a connect, not a reconnect
         scope.cancel()
