@@ -18,7 +18,19 @@ interface TodoDao {
     fun observeAll(): Flow<List<TodoEntity>>           // the ONLY read path for UI + widget
 
     @Query("SELECT * FROM todos WHERE syncStatus = 'PENDING'")
-    suspend fun pending(): List<TodoEntity>            // WorkManager drains these
+    suspend fun pending(): List<TodoEntity>            // the sync drain replays these
+
+    /** The tags you actually use, most-used first — offered as one-tap chips when adding. */
+    @Query(
+        """
+        SELECT project FROM todos
+         WHERE deleted = 0 AND project IS NOT NULL AND TRIM(project) != ''
+         GROUP BY project
+         ORDER BY COUNT(*) DESC, MAX(createdAt) DESC
+         LIMIT 8
+        """
+    )
+    suspend fun topProjects(): List<String>
 
     @Query("SELECT * FROM todos WHERE id = :id")
     suspend fun byId(id: String): TodoEntity?

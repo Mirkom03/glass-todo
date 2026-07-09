@@ -89,18 +89,22 @@ class TodoStore(
         dao.deleteMissing(rows.map { it.id })          // the SQL itself keeps PENDING rows
     }
 
-    suspend fun add(title: String, project: String?) = withContext(io) {
+    /** The tags already in use, most-used first. Offered as one-tap chips when adding. */
+    suspend fun tagSuggestions(): List<String> = withContext(io) { dao.topProjects() }
+
+    suspend fun add(title: String, project: String?, priority: Int = 0) = withContext(io) {
         val e = TodoEntity(
             id = UUID.randomUUID().toString(),
             userId = auth.requireUid(),
             title = title,
             project = project,
+            priority = priority,
             syncStatus = SyncStatus.PENDING,
         )
         dao.upsert(e)                                   // (1) OPTIMISTIC — visible instantly via Flow
         runCatching { remote.insert(e.toDto()) }
             .onSuccess { dao.upsert(e.copy(syncStatus = SyncStatus.SYNCED)) }
-            .onFailure { throw it }                     // stays PENDING → WorkManager retries
+            .onFailure { throw it }                     // stays PENDING → the drain replays it
     }
 
     suspend fun toggle(id: String, done: Boolean) = withContext(io) {

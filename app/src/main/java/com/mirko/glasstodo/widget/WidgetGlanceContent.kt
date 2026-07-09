@@ -30,8 +30,11 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextDecoration
 import androidx.glance.text.TextStyle
+import androidx.glance.unit.ColorProvider
 import com.mirko.glasstodo.R
 import com.mirko.glasstodo.domain.TodoUi
+import com.mirko.glasstodo.domain.Urgency
+import com.mirko.glasstodo.ui.urgencyColor
 
 /** The widget test matches the '+' button on this. Keep them in sync. */
 const val ADD_BUTTON_DESCRIPTION = "Añadir tarea"
@@ -107,6 +110,21 @@ private fun TodoRow(todo: TodoUi) {
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Urgency reads as a bar on the leading edge. Normal shows nothing — the absence of a
+        // signal IS the signal — and a done task never shouts, whatever its urgency was.
+        val urgency = Urgency.of(todo.priority)
+        val showUrgency = urgency != Urgency.NORMAL && !todo.done
+        if (showUrgency) {
+            Spacer(
+                GlanceModifier
+                    .width(4.dp)
+                    .height(24.dp)
+                    .cornerRadius(2.dp)
+                    .background(ColorProvider(urgencyColor(urgency)))
+            )
+            Spacer(GlanceModifier.width(8.dp))
+        }
+
         // Deliberately NOT Glance's CheckBox. On API 31+ its translator makes the checkbox View both
         // the text view AND the action target, and a CompoundButton is clickable by default — so a
         // decorative CheckBox (onCheckedChange = null) swallows the touch across the whole row and
@@ -122,13 +140,26 @@ private fun TodoRow(todo: TodoUi) {
         )
         Spacer(GlanceModifier.width(10.dp))
         Text(
-            todo.title + (todo.project?.let { "  #$it" } ?: ""),
+            todo.title,
             maxLines = 2,
+            modifier = GlanceModifier.defaultWeight(),
             style = TextStyle(
                 color = if (todo.done) GlanceTheme.colors.onSurfaceVariant else GlanceTheme.colors.onSurface,
                 fontSize = 14.sp,
                 textDecoration = if (todo.done) TextDecoration.LineThrough else null,
             ),
         )
+        todo.project?.takeIf { it.isNotBlank() }?.let { tag ->
+            Spacer(GlanceModifier.width(6.dp))
+            Text(
+                "#$tag",
+                maxLines = 1,
+                modifier = GlanceModifier
+                    .cornerRadius(8.dp)
+                    .background(GlanceTheme.colors.secondaryContainer)
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+                style = TextStyle(color = GlanceTheme.colors.onSecondaryContainer, fontSize = 11.sp),
+            )
+        }
     }
 }

@@ -9,6 +9,7 @@ import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.glance.testing.unit.assertHasStartActivityClickAction
 import androidx.glance.testing.unit.hasContentDescription
 import androidx.glance.testing.unit.hasText
+import androidx.glance.testing.unit.hasTextEqualTo
 import com.mirko.glasstodo.domain.TodoUi
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -79,10 +80,32 @@ class WidgetActionUnitTest {
     }
 
     @Test
-    fun projectTagIsShownNextToTheTitle() = runGlanceAppWidgetUnitTest {
+    fun projectTagIsShownAsItsOwnChip() = runGlanceAppWidgetUnitTest {
         provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan)) } }
 
-        onNode(hasText("#casa")).assertExists()   // hasText matches on substring
+        // The tag is a separate node now, not glued onto the title, so it can be styled and (later)
+        // filtered on. The title must NOT carry it.
+        onNode(hasTextEqualTo("#casa")).assertExists()
+        onNode(hasTextEqualTo("Comprar pan")).assertExists()
+    }
+
+    @Test
+    fun aTaskWithoutATagRendersNoChip() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(luz)) } }   // project = null
+
+        onNode(hasText("#")).assertDoesNotExist()
+    }
+
+    @Test
+    fun urgencyIsShownOnlyWhilePending() = runGlanceAppWidgetUnitTest {
+        val urgentPending = TodoUi(id = "u", title = "Arde", project = null, done = false, priority = 2)
+        val urgentDone = urgentPending.copy(id = "d", title = "Ardía", done = true)
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(urgentPending, urgentDone)) } }
+
+        // Both render; the bar is a Spacer so we cannot match it by text — what this pins is that a
+        // done task never renders as urgent (regression guard for `!todo.done` in the row).
+        onNode(hasTextEqualTo("Arde")).assertExists()
+        onNode(hasTextEqualTo("Ardía")).assertExists()
     }
 
     @Test

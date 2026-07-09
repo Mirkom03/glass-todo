@@ -3,6 +3,7 @@ package com.mirko.glasstodo.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mirko.glasstodo.data.TodoStore
+import com.mirko.glasstodo.domain.Urgency
 import com.mirko.glasstodo.domain.isPermanent
 import com.mirko.glasstodo.domain.parseInput
 import kotlinx.coroutines.CancellationException
@@ -41,9 +42,9 @@ class TodoViewModel(private val store: TodoStore) : ViewModel() {
         isSyncing.value = false
     }
 
-    fun add(raw: String) = viewModelScope.launch {
+    fun add(raw: String, urgency: Urgency = Urgency.NORMAL) = viewModelScope.launch {
         val parsed = parseInput(raw) ?: return@launch
-        runCatching { store.add(parsed.title, parsed.project) }.onFailure {
+        runCatching { store.add(parsed.title, parsed.project, urgency.priority) }.onFailure {
             if (it is CancellationException) throw it
             if (it.isPermanent()) errors.value = "No se pudo guardar la tarea"
         }

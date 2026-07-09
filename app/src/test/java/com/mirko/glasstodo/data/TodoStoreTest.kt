@@ -123,6 +123,37 @@ class TodoStoreTest {
         assertEquals(2, store(FakeRemote()).observeTodos().first()[0].priority)
     }
 
+    @Test fun add_persistsTheChosenUrgency_andSendsIt() = runTest {
+        val remote = FakeRemote()
+        store(remote).add("Llamar a José", "hacienda-verde", priority = 2)
+
+        val row = db.todoDao().observeAll().first().single()
+        assertEquals(2, row.priority)
+        assertEquals("hacienda-verde", row.project)
+        assertEquals(2, remote.inserted.single().priority)   // urgency reaches the server, not just Room
+    }
+
+    // --- tag suggestions: the tags you actually use, most-used first ---
+
+    @Test fun tagSuggestions_rankByUseAndIgnoreEmptyOnes() = runTest {
+        val dao = db.todoDao()
+        dao.upsert(TodoEntity(id = "1", userId = "u1", title = "a", project = "aide"))
+        dao.upsert(TodoEntity(id = "2", userId = "u1", title = "b", project = "aide"))
+        dao.upsert(TodoEntity(id = "3", userId = "u1", title = "c", project = "aide"))
+        dao.upsert(TodoEntity(id = "4", userId = "u1", title = "d", project = "casa"))
+        dao.upsert(TodoEntity(id = "5", userId = "u1", title = "e", project = "casa"))
+        dao.upsert(TodoEntity(id = "6", userId = "u1", title = "f", project = "makroa"))
+        dao.upsert(TodoEntity(id = "7", userId = "u1", title = "g", project = null))
+        dao.upsert(TodoEntity(id = "8", userId = "u1", title = "h", project = "   "))
+
+        assertEquals(listOf("aide", "casa", "makroa"), store(FakeRemote()).tagSuggestions())
+    }
+
+    @Test fun tagSuggestions_ignoreDeletedRows() = runTest {
+        db.todoDao().upsert(TodoEntity(id = "1", userId = "u1", title = "a", project = "muerta", deleted = true))
+        assertEquals(emptyList<String>(), store(FakeRemote()).tagSuggestions())
+    }
+
     // --- drainPending(): the regression tests for the data-loss bug (PENDING was a graveyard) ---
 
     @Test fun drain_pushesAnAddThatWasMadeOffline() = runTest {

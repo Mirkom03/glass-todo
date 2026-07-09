@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mirko.glasstodo.domain.TodoUi
+import com.mirko.glasstodo.domain.Urgency
 import com.mirko.glasstodo.ui.theme.Cyan
 
 @Composable
@@ -55,6 +56,19 @@ fun TaskRow(task: TodoUi, onToggle: () -> Unit, modifier: Modifier = Modifier) {
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Urgency reads as a bar on the edge the eye already scans, not as a badge competing
+        // with the title. Normal shows nothing: the absence of a signal IS the signal.
+        val urgency = Urgency.of(task.priority)
+        if (urgency != Urgency.NORMAL && !task.done) {
+            Box(
+                Modifier
+                    .width(4.dp)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(urgencyColor(urgency))
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         TaskCheck(task.done, onToggle)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
