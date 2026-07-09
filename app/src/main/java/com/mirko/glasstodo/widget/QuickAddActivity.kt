@@ -20,10 +20,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.mirko.glasstodo.data.SupabaseClient
-import kotlinx.coroutines.Dispatchers
+import androidx.glance.appwidget.updateAll
+import com.mirko.glasstodo.di.ServiceLocator
+import com.mirko.glasstodo.domain.parseInput
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,13 +45,14 @@ class QuickAddActivity : ComponentActivity() {
                     Button(
                         enabled = text.isNotBlank(),
                         onClick = {
-                            val uid = SupabaseClient.currentUserIdBlocking()
-                            if (uid == null) { finish(); return@Button }
+                            val parsed = parseInput(text) ?: run { finish(); return@Button }
                             scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    SupabaseTodosRest.insert(text.trim(), uid)
+                                // Same store the app and the widget observe. The row lands in Room
+                                // immediately; a failed push leaves it PENDING for the worker to drain.
+                                runCatching {
+                                    ServiceLocator.store(applicationContext).add(parsed.title, parsed.project)
                                 }
-                                TodoWidgetProvider.notifyAll(this@QuickAddActivity)
+                                TodoGlanceWidget().updateAll(applicationContext)
                                 finish()
                             }
                         }

@@ -50,6 +50,8 @@ room-testing  = { group = "androidx.room", name = "room-testing",  version.ref =
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
+glance-testing           = { group = "androidx.glance", name = "glance-testing",           version.ref = "glance" }
+glance-appwidget-testing = { group = "androidx.glance", name = "glance-appwidget-testing", version.ref = "glance" }
 
 [plugins]
 android-application  = { id = "com.android.application", version.ref = "agp" }

@@ -6,7 +6,5 @@
     android:updatePeriodMillis="0"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:initialLayout="@layout/widget_todo"
-    android:previewLayout="@layout/widget_todo"
-    android:description="@string/widget_description"
-    android:widgetFeatures="reconfigurable|configuration_optional" />
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:description="@string/widget_description" />

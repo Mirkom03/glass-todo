@@ -23,9 +23,13 @@
             android:exported="false"
             android:theme="@android:style/Theme.DeviceDefault.Dialog" />
 
-        <!-- Collection widget -->
+        <!-- Glance widget. Replaces the v1 RemoteViews collection widget (TodoWidgetProvider +
+             TodoWidgetService): its per-row taps rode a shared MUTABLE PendingIntent template plus
+             per-row fill-in extras, and the merge silently fails on some launchers -> onReceive hit
+             `getStringExtra(EXTRA_ID) ?: return` and the checkbox looked dead. Glance registers one
+             typed action per item, so there is no template and nothing to merge. -->
         <receiver
-            android:name=".widget.TodoWidgetProvider"
+            android:name=".widget.TodoGlanceReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -34,11 +38,6 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/todo_widget_info" />
         </receiver>
-
-        <service
-            android:name=".widget.TodoWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
-            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

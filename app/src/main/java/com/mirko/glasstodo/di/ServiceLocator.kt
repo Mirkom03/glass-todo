@@ -6,8 +6,10 @@ import com.mirko.glasstodo.data.RealtimeSync
 import com.mirko.glasstodo.data.SupabaseAuthSource
 import com.mirko.glasstodo.data.SupabaseClient
 import com.mirko.glasstodo.data.TodoStore
+import androidx.glance.appwidget.updateAll
 import com.mirko.glasstodo.data.local.AppDatabase
 import com.mirko.glasstodo.data.remote.TodoRemoteImpl
+import com.mirko.glasstodo.widget.TodoGlanceWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +34,8 @@ object ServiceLocator {
         val store = TodoStore(db.todoDao(), TodoRemoteImpl(client), SupabaseAuthSource(client))
         // One long-lived realtime collector for the whole process; it waits for an authenticated
         // session before subscribing, so a signed-out cold start never wipes the local cache.
-        RealtimeSync.from(client, store, appScope).start()
+        // Every snapshot also re-renders the widget, even when no app UI is on screen.
+        RealtimeSync.from(client, store, appScope, onSnapshot = { TodoGlanceWidget().updateAll(ctx) }).start()
         return store
     }
 

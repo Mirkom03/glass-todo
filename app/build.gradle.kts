@@ -101,4 +101,6 @@ dependencies {
     testImplementation("app.cash.turbine:turbine:1.2.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation(libs.room.testing)
+    testImplementation(libs.glance.testing)
+    testImplementation(libs.glance.appwidget.testing)
 }
