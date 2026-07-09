@@ -38,6 +38,7 @@ class RealtimeSyncTest {
         var listCalls = 0
         override suspend fun list(userId: String): List<TodoDto> { listCalls++; return serverRows }
         override suspend fun insert(dto: TodoDto) = Unit
+        override suspend fun upsert(dto: TodoDto) = Unit
         override suspend fun setDone(id: String, done: Boolean) = Unit
         override suspend fun delete(id: String) = Unit
     }

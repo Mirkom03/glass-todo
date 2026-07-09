@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.updateAll
+import com.mirko.glasstodo.data.AuthRepository
 import com.mirko.glasstodo.di.ServiceLocator
 import com.mirko.glasstodo.domain.parseInput
 import kotlinx.coroutines.launch
@@ -47,8 +48,10 @@ class QuickAddActivity : ComponentActivity() {
                         onClick = {
                             val parsed = parseInput(text) ?: run { finish(); return@Button }
                             scope.launch {
+                                // Opened from the widget, so the process may be cold with a dead token.
+                                runCatching { AuthRepository().ensureFreshSession() }
                                 // Same store the app and the widget observe. The row lands in Room
-                                // immediately; a failed push leaves it PENDING for the worker to drain.
+                                // immediately; a failed push leaves it PENDING for the drain to replay.
                                 runCatching {
                                     ServiceLocator.store(applicationContext).add(parsed.title, parsed.project)
                                 }

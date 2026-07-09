@@ -22,22 +22,45 @@ class TodoRemoteImpl(private val client: SupabaseClient) : TodoRemote {
     }
 
     override suspend fun insert(dto: TodoDto) {
-        remote { client.from(TABLE).insert(dto) }
+        remote {
+            requireAffected(client.from(TABLE).insert(dto) { select() }.decodeList<TodoDto>(), "insert")
+        }
+    }
+
+    override suspend fun upsert(dto: TodoDto) {
+        remote {
+            requireAffected(client.from(TABLE).upsert(dto) { select() }.decodeList<TodoDto>(), "upsert")
+        }
     }
 
     override suspend fun setDone(id: String, done: Boolean) {
         remote {
-            client.from(TABLE).update({ set("done", done) }) {
+            val rows = client.from(TABLE).update({ set("done", done) }) {
+                select()
                 filter { eq("id", id) }
-            }
+            }.decodeList<TodoDto>()
+            requireAffected(rows, "update")
         }
     }
 
     override suspend fun delete(id: String) {
+        // A delete that matches nothing is indistinguishable from "already gone", so we do not
+        // require affected rows here. If RLS silently blocked it, the next pull brings the row back.
         remote {
-            client.from(TABLE).delete {
-                filter { eq("id", id) }
-            }
+            client.from(TABLE).delete { filter { eq("id", id) } }
+        }
+    }
+
+    /**
+     * Postgrest returns HTTP 200 with an EMPTY body when RLS filters every row — e.g. the request
+     * went out with the anon key because the access token had expired. Without this guard the store
+     * would mark the write SYNCED while the server never changed, and the next pull would silently
+     * revert it. 403 is classified as transient, so the row stays PENDING and the drain retries it
+     * once the session is refreshed.
+     */
+    private fun requireAffected(rows: List<TodoDto>, op: String) {
+        if (rows.isEmpty()) {
+            throw RemoteException(403, "$op affected no rows — RLS rejected it (expired or anon token?)")
         }
     }
 

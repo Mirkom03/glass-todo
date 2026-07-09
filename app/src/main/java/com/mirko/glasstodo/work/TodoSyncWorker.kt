@@ -21,8 +21,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * Safety net ONLY. While the app process is alive, RealtimeSync is the live path — do not also poll,
  * or the two writers fight and the widget flickers. This worker exists for the process-dead case:
  *
- *  1. refreshes the token (we disabled `enableLifecycleCallbacks`, so nobody else does it),
- *  2. pulls once into Room,
+ *  1. refreshes the token if it went stale (we disabled `enableLifecycleCallbacks`, so nobody else does),
+ *  2. drains local writes whose first push failed, then pulls into Room,
  *  3. re-renders the widget.
  *
  * v1 polled every 15 minutes and re-fetched over raw OkHttp on the widget's binder thread.
@@ -31,8 +31,8 @@ class TodoSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
 
     override suspend fun doWork(): Result = try {
         val store = ServiceLocator.store(applicationContext)   // also guarantees SupabaseClient.init()
-        AuthRepository().refreshSession()
-        store.refresh()
+        AuthRepository().ensureFreshSession()                  // refresh only if the token is stale
+        store.refresh()                                        // drains PENDING writes, then pulls
         TodoGlanceWidget().updateAll(applicationContext)
         Result.success()
     } catch (e: CancellationException) {

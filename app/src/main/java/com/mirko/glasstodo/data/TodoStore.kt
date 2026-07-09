@@ -10,6 +10,7 @@ import com.mirko.glasstodo.data.remote.toDto
 import com.mirko.glasstodo.data.remote.toEntity
 import com.mirko.glasstodo.domain.TodoUi
 import com.mirko.glasstodo.domain.isPermanent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -31,7 +32,50 @@ class TodoStore(
 
     suspend fun refresh() = withContext(io) {
         val uid = auth.requireUid()
+        // PUSH before PULL. A pull treats the server as authoritative for everything except PENDING
+        // rows, so if local writes were never sent they would sit here forever, invisible to every
+        // other device and destroyed by the next reinstall.
+        drainPending()
         reconcile(remote.list(uid))
+    }
+
+    /**
+     * Replays every local write whose first push failed (offline add, toggle that hit a 503, a
+     * delete made while the token was stale). Without this, [SyncStatus.PENDING] is a graveyard:
+     * [reconcile] protects those rows from the server snapshot, so the two copies never reconverge.
+     *
+     * Uses `upsert` rather than insert-or-update because we cannot know whether the server already
+     * saw the row: the first push may have reached Postgres and then lost the response.
+     *
+     * A PERMANENT failure (a 4xx that is not auth) means the server will never accept this row.
+     * We drop tombstones — the delete is already reflected locally — but keep data rows PENDING and
+     * visible (dimmed in the UI) rather than deleting something the user typed.
+     *
+     * @return how many rows reached the server.
+     */
+    suspend fun drainPending(): Int = withContext(io) {
+        var pushed = 0
+        for (row in dao.pending()) {
+            val result = runCatching {
+                if (row.deleted) {
+                    remote.delete(row.id)
+                    dao.hardDelete(row.id)
+                } else {
+                    remote.upsert(row.toDto())
+                    dao.upsert(row.copy(syncStatus = SyncStatus.SYNCED))
+                }
+            }
+            when {
+                result.isSuccess -> pushed++
+                else -> {
+                    val error = result.exceptionOrNull()!!
+                    if (error is CancellationException) throw error
+                    if (error.isPermanent() && row.deleted) dao.hardDelete(row.id)
+                    // transient (offline, 5xx, expired token): leave it PENDING, retry next drain
+                }
+            }
+        }
+        pushed
     }
 
     /**
