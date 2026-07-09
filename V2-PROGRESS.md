@@ -76,8 +76,26 @@ Each step must end GREEN on `android-ci` before the next.
   - **Step 9:** `work/TodoSyncWorker.kt` = 30-min safety net that owns `refreshSession()` + one pull + `updateAll`. The 15-min poll is gone. Scheduled from `TodoGlanceReceiver.onEnabled`, cancelled in `onDisabled`.
   - **DELETED:** `widget/{TodoWidgetProvider,TodoWidgetService,SupabaseTodosRest,TodoSyncWorker}.kt`, `res/layout/widget_todo*.xml`.
 
-## ⚠️ When this ships to the phone
-The widget's receiver class changed (`TodoWidgetProvider` → `TodoGlanceReceiver`), so **Mirko's existing home-screen widget will disappear on update and must be re-added.** That is unavoidable: a provider rename is a new widget as far as the launcher is concerned.
+## ⚠️ When this ships to the phone — read this before installing
+
+1. **You must UNINSTALL v1.0.4 first.** Up to v1.0.4 the release workflow shipped `assembleDebug`, signed with the throwaway debug keystore that AGP generates fresh on every CI runner. Verified: v1.0.3's certificate is `77435cc2…d8b8`, v1.0.4's is `4a05b39e…975a` — different keys. Android rejects an install over an app signed with a different key (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), which means **the in-app updater has never once updated in place**; every "update" was really an uninstall + reinstall.
+   From v1.1.0 the APK is signed with a stable key (`CN=Mirko Milano Gumenyuk`, SHA-256 `e6828727…ac5d`), so v1.1.0 → v1.2.0 and onward WILL update in place. v1.1.0 itself is the last forced uninstall.
+2. **The widget disappears and must be re-added.** The receiver class changed (`TodoWidgetProvider` → `TodoGlanceReceiver`); a provider rename is a brand-new widget as far as the launcher is concerned.
+3. **You will have to sign in again** (`mirko@glasstodo.app`). Uninstalling clears the stored session. No todos are lost — they live in Supabase.
+
+### 🔑 The signing keystore — back this up
+- `C:/Users/mirko/keys/glass-todo-release.jks` + `glass-todo-release.pass` (the password, one line, no newline).
+- Also mirrored into repo secrets: `SIGNING_KEYSTORE_B64`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS` (`glasstodo`), `SIGNING_KEY_PASSWORD`.
+- **If both the local file and the secret are lost, no future build can ever update an installed app** — the only recovery is uninstall + reinstall, forever. Copy the `.jks` and the `.pass` somewhere durable (password manager / OneDrive).
+- The keystore is NOT in git and never should be: the repo is public.
+
+## How to ship a release
+```bash
+# 1) bump in app/build.gradle.kts: versionCode + versionName   (already at 5 / "1.1.0")
+# 2) run the suite locally, then tag:
+git tag v1.1.0 && git push origin v1.1.0
+```
+`release.yml` then materialises the keystore from the secret, runs `assembleRelease`, **fails the job unless the APK carries the expected certificate DN** (so a mis-signed APK can never be published), and attaches `app-release.apk` to the GitHub Release. `Updater.check()` picks the first `.apk` asset and compares `tag_name` (minus the `v`) against `BuildConfig.VERSION_NAME`.
 
 ## ⚠️ Naming / transition rule
 The offline-first repository is **`data/TodoStore.kt`**. The whole v1 stack (`TodoRepository`, `Todo`, the RemoteViews widget, `SupabaseTodosRest`) is GONE. Nothing left to transition.
