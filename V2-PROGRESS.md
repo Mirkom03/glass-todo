@@ -1,15 +1,6 @@
 # Glass Todo — v2 rebuild progress & handoff
 
-**Status (2026-07-09): steps 1–7b green in CI (`cd00e44`). Steps 8+9 are WRITTEN AND PUSHED (`7255e73`); their CI run was still QUEUED when the session ended — GitHub was in a "Minor Service Outage". FIRST THING NEXT SESSION: check that run.**
-
-```bash
-gh run list -R Mirkom03/glass-todo --workflow android-ci.yml -L 5 --json headSha,status,conclusion
-```
-
-What is already proven about steps 8+9, from the CI runs that did complete:
-- All main sources compile (`compileDebugKotlin` passed on run `29012961989`).
-- **32 tests ran, 27 pre-existing ones passed**, and after adding `@RunWith(RobolectricTestRunner::class)` **4 of the 5 new widget tests passed** (`assertIsChecked`, the `+` → Activity action, the empty state, the `#project` tag).
-- The one that failed, `everyRowCarriesItsOwnId`, failed for a *test-expressiveness* reason, not a product bug: Glance wraps a `CheckBox`'s action in an internal `CompoundButtonAction` that no public assertion can see through. `7255e73` moves the action onto the `Row` (also a better tap target) and re-asserts it. **That last commit is what still needs a green run.**
+**Status (2026-07-09): steps 1–9 DONE and GREEN in CI (`7255e73`, run `29013250728`). All four shipping bugs are fixed and covered by tests. What remains is optional: 7c (Roborazzi goldens), 10 (polish), 11 (emulator tier), 12 (hardening) — then bump the version and tag a release.**
 
 Goal: rebuild the widget+app "the right way" so it's bug-free + self-verifying (the v1 widget had unreliable taps + an empty-widget bug). The FULL plan with copy-ready code for every step is in **`docs/v2-blueprint.md`** — read it. This file is the running progress + handoff. Deep research briefs are in `docs/v2-research.json`.
 
@@ -63,7 +54,7 @@ Each step must end GREEN on `android-ci` before the next.
   - `ui/MainActivity.kt` gates on `SessionStatus` (**`Initializing` is not "signed out"** — v1 flashed the login form) and calls `auth.refreshSession()` on every resume.
   - `data/AuthRepository.kt` replaces the auth half of the v1 repo. **DELETED:** `data/TodoRepository.kt`, `data/Todo.kt`.
 
-- **Steps 8 + 9** — the Glance widget (the actual tap fix) + the worker demotion. commits `ed316bd` → `e5c66fc` → `326247a`. ⚠️ **CI NOT YET GREEN — run was still queued during a GitHub outage. Verify before trusting.**
+- **Steps 8 + 9** — the Glance widget (the actual tap fix) + the worker demotion. commits `ed316bd` → `e5c66fc` → `326247a` → `489e81a` → `7255e73` (green, run `29013250728`).
   - **Root cause, read straight off v1's `TodoWidgetProvider.onReceive`:** every row shared ONE mutable `PendingIntent` template and relied on per-row fill-in extras merging into it. Launchers that drop the merge left `getStringExtra(EXTRA_ID) ?: return` — the checkbox did nothing. Glance registers one typed action per item: no template, nothing to merge.
   - `widget/WidgetGlanceContent.kt` — the single composable that the real widget AND the tests render.
   - `widget/TodoGlanceWidget.kt` — observes Room **inside `provideContent`**, so any write (app, widget tap, realtime) re-renders it. The widget never touches the network; v1 did `runBlocking` OkHttp on the binder thread (ANR-class).
