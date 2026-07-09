@@ -75,4 +75,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.work.runtime)
     implementation(libs.core.ktx)
+
+    // --- tests (JVM, no emulator) ---
+    testImplementation("junit:junit:4.13.2")
 }
