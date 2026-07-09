@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,11 +9,13 @@ plugins {
 
 // Keys: env (CI) -> local.properties (dev) -> empty. Anon key is public, but injecting keeps it out of git.
 fun secret(key: String): String {
-    System.getenv(key)?.let { return it }
+    val env = System.getenv(key)
+    if (!env.isNullOrEmpty()) return env
     val lp = rootProject.file("local.properties")
     if (lp.exists()) {
-        val p = java.util.Properties().apply { lp.inputStream().use { load(it) } }
-        p.getProperty(key)?.let { return it }
+        val props = Properties()
+        lp.inputStream().use { props.load(it) }
+        return props.getProperty(key) ?: ""
     }
     return ""
 }
