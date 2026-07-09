@@ -1,0 +1,11 @@
+/build
+/app/build
+.gradle
+local.properties
+.idea
+*.iml
+.DS_Store
+captures
+# keystore if you ever add release signing
+*.jks
+!gradle/wrapper/gradle-wrapper.jar
