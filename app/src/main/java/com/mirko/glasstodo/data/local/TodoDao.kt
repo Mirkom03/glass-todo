@@ -38,6 +38,20 @@ interface TodoDao {
     @Upsert suspend fun upsert(t: TodoEntity)
     @Upsert suspend fun upsertAll(t: List<TodoEntity>)
 
+    // A push completion may only settle ITS OWN value. Writing back a pre-push snapshot resurrected
+    // the old state over a newer tap («no puedo destickearlo», 2026-07-09) — hence the WHERE guards:
+    // if the row no longer holds the value this push carried, a newer write owns it now.
+    @Query("UPDATE todos SET syncStatus = 'SYNCED' WHERE id = :id AND done = :done AND syncStatus = 'PENDING'")
+    suspend fun settleToggle(id: String, done: Boolean)
+
+    @Query(
+        """
+        UPDATE todos SET done = :prevDone, syncStatus = :prevStatus
+        WHERE id = :id AND done = :attempted AND syncStatus = 'PENDING'
+        """
+    )
+    suspend fun rollbackToggle(id: String, attempted: Boolean, prevDone: Boolean, prevStatus: SyncStatus)
+
     @Query("DELETE FROM todos WHERE id = :id")
     suspend fun hardDelete(id: String)
 

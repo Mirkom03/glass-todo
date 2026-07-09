@@ -325,9 +325,15 @@ private fun TodoRow(todo: TodoUi, showTag: Boolean = true, compact: Boolean = fa
             // per-row fill-in extras merging into it; launchers that drop the merge left
             // `getStringExtra(EXTRA_ID) ?: return` and the checkbox did nothing. Glance registers one
             // typed action per row — no template, nothing to merge — and the whole row is the target.
+            // The action carries the user's INTENT (the negation of what this row is showing), not
+            // just the id: deriving the new value from Room at tap time inverted the tap whenever
+            // Room had moved under a stale render («no puedo destickearlo», 2026-07-09).
             .clickable(
                 actionRunCallback<ToggleTodoAction>(
-                    actionParametersOf(ToggleTodoAction.idKey to todo.id)
+                    actionParametersOf(
+                        ToggleTodoAction.idKey to todo.id,
+                        ToggleTodoAction.doneKey to !todo.done,
+                    )
                 )
             ),
         verticalAlignment = Alignment.CenterVertically,

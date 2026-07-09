@@ -8,8 +8,10 @@ import com.mirko.glasstodo.data.local.TodoEntity
 import com.mirko.glasstodo.data.remote.TodoDto
 import com.mirko.glasstodo.data.remote.TodoRemote
 import com.mirko.glasstodo.domain.RemoteException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -86,18 +88,50 @@ class TodoStoreTest {
         assertEquals(SyncStatus.PENDING, e.syncStatus)
     }
 
-    @Test fun toggleFlip_derivesTheNewValueFromRoom_notFromTheCaller() = runTest {
-        db.todoDao().upsert(TodoEntity(id = "1", userId = "u1", title = "a", done = false))
-        val s = store(FakeRemote())
-        s.toggle("1")                                               // widget path: no value passed in
-        assertEquals(true, db.todoDao().byId("1")!!.done)
-        s.toggle("1")
-        assertEquals(false, db.todoDao().byId("1")!!.done)
+    @Test fun toggle_onMissingRow_isANoOp() = runTest {
+        store(FakeRemote()).toggle("no-existe", true)
+        assertEquals(0, db.todoDao().observeAll().first().size)
     }
 
-    @Test fun toggleFlip_onMissingRow_isANoOp() = runTest {
-        store(FakeRemote()).toggle("no-existe")
-        assertEquals(0, db.todoDao().observeAll().first().size)
+    /**
+     * The field bug of 2026-07-09 («no puedo destickearlo»). Two taps in quick succession: the
+     * check's push is still in flight when the uncheck lands. The check's success callback used to
+     * write back its PRE-TAP snapshot (`prev.copy`), resurrecting done=true over the user's uncheck
+     * — the row re-ticked itself. The completion of a push may only mark ITS OWN value as synced;
+     * it must never overwrite a newer write.
+     */
+    @Test fun toggle_aSlowFirstPushDoesNotClobberASecondTap() = runTest {
+        db.todoDao().upsert(TodoEntity(id = "1", userId = "u1", title = "a", done = false))
+        val arrived = CompletableDeferred<Unit>()                   // tap 1's push reached the network
+        val gate = CompletableDeferred<Unit>()                      // ...and hangs there until released
+        val base = FakeRemote()
+        val remote = object : TodoRemote by base {
+            var first = true
+            override suspend fun setDone(id: String, done: Boolean) {
+                if (first) { first = false; arrived.complete(Unit); gate.await() }
+                base.setDone(id, done)
+            }
+        }
+        val s = store(remote)
+
+        val slowCheck = launch { s.toggle("1", true) }              // tap 1: check
+        arrived.await()                                             // its optimistic write is in Room, push in flight
+        s.toggle("1", false)                                        // tap 2: uncheck — completes first
+        gate.complete(Unit)                                         // now the check's push resolves
+        slowCheck.join()
+
+        val e = db.todoDao().byId("1")!!
+        assertEquals(false, e.done)                                 // the user's LAST action wins
+        assertEquals(SyncStatus.SYNCED, e.syncStatus)               // and it is settled, not left PENDING
+    }
+
+    /** A tap whose target the row already holds must not touch the network — re-taps converge. */
+    @Test fun toggle_isIdempotent_whenTheRowAlreadyHoldsTheTarget() = runTest {
+        db.todoDao().upsert(TodoEntity(id = "1", userId = "u1", title = "a", done = true, syncStatus = SyncStatus.SYNCED))
+        val remote = FakeRemote()
+        store(remote).toggle("1", true)
+        assertEquals(emptyList<String>(), remote.calls)
+        assertEquals(true, db.todoDao().byId("1")!!.done)
     }
 
     // --- ordering: pending first, most urgent first, newest first; done sinks to the bottom ---

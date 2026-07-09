@@ -38,16 +38,25 @@ class WidgetActionUnitTest {
 
         // v1 shared ONE mutable PendingIntent template across rows and merged per-row fill-in extras
         // into it; when a launcher dropped the merge the id arrived null and the tap did nothing.
-        // Here each row must own a separate action carrying exactly its own id. `onNode` also fails
-        // if a matcher hits more than one node, so this proves the two actions are distinct.
+        // Here each row must own a separate action carrying exactly its own id AND the user's intent:
+        // the negation of the state the row SHOWED. v1.3.2 carried only the id and flipped whatever
+        // Room held at tap time — if Room had moved under a stale render (cold process, racing push),
+        // the tap INVERTED the user's action: «no puedo destickearlo» (2026-07-09, API logs as proof).
+        // `onNode` also fails if a matcher hits more than one node, so the actions are distinct.
         onNode(
-            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(ToggleTodoAction.idKey to "id-1"))
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(
+                ToggleTodoAction.idKey to "id-1", ToggleTodoAction.doneKey to true,   // pan is pending → tap = check
+            ))
         ).assertExists()
         onNode(
-            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(ToggleTodoAction.idKey to "id-2"))
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(
+                ToggleTodoAction.idKey to "id-2", ToggleTodoAction.doneKey to false,  // luz is done → tap = uncheck
+            ))
         ).assertExists()
         onNode(
-            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(ToggleTodoAction.idKey to "id-3"))
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(
+                ToggleTodoAction.idKey to "id-3", ToggleTodoAction.doneKey to true,
+            ))
         ).assertDoesNotExist()
     }
 

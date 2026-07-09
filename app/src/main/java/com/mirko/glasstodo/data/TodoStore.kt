@@ -107,22 +107,24 @@ class TodoStore(
             .onFailure { throw it }                     // stays PENDING → the drain replays it
     }
 
+    /**
+     * Set the task to the state the user ASKED for — both surfaces pass the intent explicitly (the
+     * negation of the row the user was looking at). There is deliberately no "flip whatever Room
+     * holds" variant any more: deriving the target from Room at tap time inverted the tap whenever
+     * Room had moved under a stale widget render («no puedo destickearlo», 2026-07-09). Intent also
+     * makes re-taps idempotent, and the settle/rollback writes are guarded so a slow push completion
+     * can never clobber a newer tap (the API logs showed exactly that pair of racing PATCHes).
+     */
     suspend fun toggle(id: String, done: Boolean) = withContext(io) {
         val prev = dao.byId(id) ?: return@withContext
+        if (prev.done == done) return@withContext           // already what the user asked for
         dao.upsert(prev.copy(done = done, syncStatus = SyncStatus.PENDING, updatedAt = now()))  // OPTIMISTIC
         runCatching { remote.setDone(id, done) }
-            .onSuccess { dao.upsert(prev.copy(done = done, syncStatus = SyncStatus.SYNCED)) }
-            .onFailure { err -> if (err.isPermanent()) dao.upsert(prev); throw err }             // ROLLBACK
-    }
-
-    /**
-     * Flip whatever Room currently holds. The widget uses this: a widget render can be seconds old,
-     * so the new value must be derived from the source of truth at tap time, never from the value
-     * that was baked into the rendered row.
-     */
-    suspend fun toggle(id: String) {
-        val prev = withContext(io) { dao.byId(id) } ?: return
-        toggle(id, !prev.done)
+            .onSuccess { dao.settleToggle(id, done) }
+            .onFailure { err ->                                                                  // ROLLBACK
+                if (err.isPermanent()) dao.rollbackToggle(id, done, prev.done, prev.syncStatus)
+                throw err
+            }
     }
 
     suspend fun delete(id: String) = withContext(io) {
