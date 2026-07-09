@@ -3,6 +3,7 @@ package com.mirko.glasstodo.widget
 import android.content.Context
 import android.content.Intent
 import android.graphics.Paint
+import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import com.mirko.glasstodo.R
@@ -39,11 +40,18 @@ class TodoFactory(private val c: Context) : RemoteViewsService.RemoteViewsFactor
                 if (t.done) Paint.STRIKE_THRU_TEXT_FLAG or Paint.ANTI_ALIAS_FLAG
                 else Paint.ANTI_ALIAS_FLAG
             )
+            if (!t.project.isNullOrBlank()) {
+                setTextViewText(R.id.item_project, "#${t.project}")
+                setViewVisibility(R.id.item_project, View.VISIBLE)
+            } else {
+                setViewVisibility(R.id.item_project, View.GONE)
+            }
+            // WHOLE ROW is the tap target → toggles done (merges into the broadcast template)
             val fill = Intent().apply {
                 putExtra(TodoWidgetProvider.EXTRA_ID, t.id)
                 putExtra(TodoWidgetProvider.EXTRA_DONE, t.done)
             }
-            setOnClickFillInIntent(R.id.item_check, fill)   // tap toggles (merges into template)
+            setOnClickFillInIntent(R.id.item_root, fill)
         }
     }
 

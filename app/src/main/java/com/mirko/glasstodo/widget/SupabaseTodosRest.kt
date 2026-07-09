@@ -11,7 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 
 @Serializable
-data class WidgetTodo(val id: String, val title: String, val done: Boolean = false)
+data class WidgetTodo(val id: String, val title: String, val done: Boolean = false, val project: String? = null)
 
 object SupabaseTodosRest {
     private val URL = "${BuildConfig.SUPABASE_URL}/rest/v1/todos"
@@ -24,7 +24,7 @@ object SupabaseTodosRest {
 
     fun fetch(): List<WidgetTodo> {
         val r = Request.Builder()
-            .url("$URL?select=id,title,done&order=created_at.desc")
+            .url("$URL?select=id,title,done,project&order=created_at.desc")
             .header("apikey", ANON)
             .header("Authorization", "Bearer ${bearer()}")
             .build()
