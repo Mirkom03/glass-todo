@@ -1,6 +1,14 @@
 # Glass Todo — v2 rebuild progress & handoff
 
-**Status (2026-07-09): steps 1–9 DONE and GREEN in CI (`7255e73`, run `29013250728`). All four shipping bugs are fixed and covered by tests. What remains is optional: 7c (Roborazzi goldens), 10 (polish), 11 (emulator tier), 12 (hardening) — then bump the version and tag a release.**
+**Status (2026-07-09): steps 1–9 DONE and green. v1.1.0 tagged and released (signed). 45/45 tests green. What remains is optional: 7c (Roborazzi goldens), 10 (polish), 11 (emulator tier), 12 (hardening).**
+
+### A pre-ship adversarial audit found a data-loss BLOCKER — fixed in `d8ae5ed`
+Ten hypotheses were reviewed by parallel agents and adversarially verified; eight were refuted (including plausible-sounding ones: `NOT IN ()` SQL, a crashing realtime collector, `allowBackup` leaking the session). Two survived:
+
+1. **BLOCKER — `PENDING` was a graveyard.** `dao.pending()` was only ever read inside `reconcile()`, to *protect* those rows from the server snapshot — never to send them. The comment "stays PENDING → WorkManager retries" was a lie: nothing retried. A todo added offline showed in the app and the widget, never reached Supabase, never appeared on another device, and was destroyed by the next reinstall. Same for a toggle or delete that hit a 503 or an expired token. Fixed with `TodoStore.drainPending()`, called from `refresh()` **before** the pull (so the worker, the realtime reconnect and app start all drain).
+2. **HIGH — writes from the widget could be silently dropped.** A tap can resurrect a dead process hours later with an expired token. Postgrest does not refresh for you: it falls back to the anon key, RLS filters every row, and the server returns **HTTP 200 with an empty body** — which the store recorded as SYNCED while nothing changed, and the next pull silently reverted the checkbox. Fixed on two fronts: `TodoRemoteImpl` now requires affected rows (`select()` on insert/upsert/update; zero rows → a transient 403 → row stays PENDING → the drain replays it), and `ToggleTodoAction`/`QuickAddActivity` call `AuthRepository.ensureFreshSession()` first, deciding freshness by decoding the JWT's own `exp` claim (`domain/JwtExpiry.kt`) so we do not hammer the refresh endpoint on every tap and race Supabase's refresh-token rotation.
+
+The lesson worth keeping: **34 green unit tests said nothing about either bug.** Both live in the seam between local state and the server, which no fake exercised — the `TodoRemote` fakes were call recorders, not servers. They are now in-memory servers, and `refresh_drainsBeforePulling` pins the push-before-pull ordering.
 
 Goal: rebuild the widget+app "the right way" so it's bug-free + self-verifying (the v1 widget had unreliable taps + an empty-widget bug). The FULL plan with copy-ready code for every step is in **`docs/v2-blueprint.md`** — read it. This file is the running progress + handoff. Deep research briefs are in `docs/v2-research.json`.
 
