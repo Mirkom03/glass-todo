@@ -1,11 +1,15 @@
 # Glass Todo — v2 rebuild progress & handoff
 
-**Status (2026-07-09): steps 1–7b green in CI (`cd00e44`). Steps 8+9 are WRITTEN AND PUSHED (`326247a`) but their CI run is still QUEUED — GitHub was in a "Minor Service Outage" — so they are NOT yet verified. First thing next session: check that run.**
+**Status (2026-07-09): steps 1–7b green in CI (`cd00e44`). Steps 8+9 are WRITTEN AND PUSHED (`7255e73`); their CI run was still QUEUED when the session ended — GitHub was in a "Minor Service Outage". FIRST THING NEXT SESSION: check that run.**
 
 ```bash
 gh run list -R Mirkom03/glass-todo --workflow android-ci.yml -L 5 --json headSha,status,conclusion
 ```
-`compileDebugKotlin` already passed on the widget code once (run `29012402732` failed only on a missing `updateAll` import, now fixed), so the Glance main sources compile. What is still unproven is `WidgetActionUnitTest` — the test that proves the tap fix.
+
+What is already proven about steps 8+9, from the CI runs that did complete:
+- All main sources compile (`compileDebugKotlin` passed on run `29012961989`).
+- **32 tests ran, 27 pre-existing ones passed**, and after adding `@RunWith(RobolectricTestRunner::class)` **4 of the 5 new widget tests passed** (`assertIsChecked`, the `+` → Activity action, the empty state, the `#project` tag).
+- The one that failed, `everyRowCarriesItsOwnId`, failed for a *test-expressiveness* reason, not a product bug: Glance wraps a `CheckBox`'s action in an internal `CompoundButtonAction` that no public assertion can see through. `7255e73` moves the action onto the `Row` (also a better tap target) and re-asserts it. **That last commit is what still needs a green run.**
 
 Goal: rebuild the widget+app "the right way" so it's bug-free + self-verifying (the v1 widget had unreliable taps + an empty-widget bug). The FULL plan with copy-ready code for every step is in **`docs/v2-blueprint.md`** — read it. This file is the running progress + handoff. Deep research briefs are in `docs/v2-research.json`.
 
