@@ -53,11 +53,19 @@ jobs:
         run: gradle assembleRelease --no-daemon --stacktrace
 
       # Fail loudly rather than publish an APK the phone cannot install over the previous one.
+      # Match on the certificate FINGERPRINT, not on apksigner's prose: different build-tools print
+      # "Signer #1 certificate DN:" vs "V2 Signer: certificate DN:". The digest is not a secret.
       - name: Verify the APK carries the expected signing certificate
+        env:
+          EXPECTED_CERT_SHA256: e6828727d6b777f415ff02b47e4e77d79241ff3697aa8260006e205d45b6ac5d
         run: |
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name 'apksigner' | sort -V | tail -1)
           "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee certs.txt
-          grep -qi 'Signer #1 certificate DN: CN=Mirko Milano Gumenyuk' certs.txt
+          if ! grep -qi "$EXPECTED_CERT_SHA256" certs.txt; then
+            echo "::error::APK is not signed with the expected release certificate — refusing to publish"
+            exit 1
+          fi
+          echo "Signing certificate OK ($EXPECTED_CERT_SHA256)"
 
       - name: Attach APK to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
