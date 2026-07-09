@@ -105,7 +105,7 @@ The offline-first repository is **`data/TodoStore.kt`**. The whole v1 stack (`To
 
 ### Glance 1.1.1 — verified against the frozen API txt (AndroidX emits no `1.1.1.txt`; the 1.1.x surface is `glance/*/api/1.1.0-beta01.txt`)
 - **The blueprint had the assertion name wrong.** It is `assertHasRunCallbackClickAction<T>()`, NOT `assertHasActionRunCallbackClickAction`. There is no such symbol.
-- `runGlanceAppWidgetUnitTest {}` is a **plain-JVM** API (`androidx.glance.appwidget.testing.unit`), no Robolectric, no emulator, no opt-in annotation. Inside: `provideComposable {}`, `onNode(matcher)`.
+- `runGlanceAppWidgetUnitTest {}` (`androidx.glance.appwidget.testing.unit`) needs no emulator and no opt-in, but it **DOES need Robolectric**: `ActionParameters` is backed by a real `android.os.Bundle`, so on the plain JVM every test dies with `Method putInt in android.os.BaseBundle not mocked`. Annotate the class `@RunWith(RobolectricTestRunner::class)`. (The docs call it a "unit test" API, which reads as Robolectric-free. It isn't.) Inside: `provideComposable {}`, `onNode(matcher)`.
 - `assertHasStartActivityClickAction<T : Activity>()` (reified, `androidx.glance.testing.unit`) — use this, not the `Intent` overload, or you need an Android context in a JVM test.
 - `hasText(...)` matches on **substring**; `hasTextEqualTo(...)` is the exact one. `assertExists()` / `assertDoesNotExist()` are members of `GlanceNodeAssertion`.
 - `CheckBox(checked, onCheckedChange: Action?, modifier, text, style, colors, maxLines)` — the `Action?` overload is the one that takes `actionRunCallback<T>()`.

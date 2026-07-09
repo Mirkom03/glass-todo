@@ -11,11 +11,18 @@ import androidx.glance.testing.unit.hasContentDescription
 import androidx.glance.testing.unit.hasText
 import com.mirko.glasstodo.domain.TodoUi
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * The regression test for the v1 bug. No launcher, no emulator: it renders the exact composable the
  * real widget renders and asserts the click actions that get registered.
+ *
+ * Robolectric is REQUIRED even though `runGlanceAppWidgetUnitTest` is a "JVM" API: Glance's
+ * `ActionParameters` is backed by a real `android.os.Bundle`, so on the plain JVM every test dies
+ * with "Method putInt in android.os.BaseBundle not mocked".
  */
+@RunWith(RobolectricTestRunner::class)
 class WidgetActionUnitTest {
 
     private val pan = TodoUi(id = "id-1", title = "Comprar pan", project = "casa", done = false)
