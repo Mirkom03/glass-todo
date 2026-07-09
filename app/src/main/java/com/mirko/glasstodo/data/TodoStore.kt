@@ -4,6 +4,7 @@ import com.mirko.glasstodo.data.local.SyncStatus
 import com.mirko.glasstodo.data.local.TodoDao
 import com.mirko.glasstodo.data.local.TodoEntity
 import com.mirko.glasstodo.data.local.toUi
+import com.mirko.glasstodo.data.remote.TodoDto
 import com.mirko.glasstodo.data.remote.TodoRemote
 import com.mirko.glasstodo.data.remote.toDto
 import com.mirko.glasstodo.data.remote.toEntity
@@ -30,9 +31,18 @@ class TodoStore(
 
     suspend fun refresh() = withContext(io) {
         val uid = auth.requireUid()
-        val rows = remote.list(uid)
-        dao.upsertAll(rows.map { it.toEntity(SyncStatus.SYNCED) })
-        dao.deleteMissing(rows.map { it.id })          // drop rows deleted elsewhere
+        reconcile(remote.list(uid))
+    }
+
+    /**
+     * Merge a full server snapshot into Room. Local PENDING rows WIN: an unpushed offline add is
+     * absent from the snapshot (deleting it would lose data) and an unpushed toggle/tombstone must
+     * not be clobbered by the server's stale copy. Also the entry point for realtime snapshots.
+     */
+    internal suspend fun reconcile(rows: List<TodoDto>) {
+        val pendingIds = dao.pending().map { it.id }.toSet()
+        dao.upsertAll(rows.filter { it.id !in pendingIds }.map { it.toEntity(SyncStatus.SYNCED) })
+        dao.deleteMissing(rows.map { it.id })          // the SQL itself keeps PENDING rows
     }
 
     suspend fun add(title: String, project: String?) = withContext(io) {

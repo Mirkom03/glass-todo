@@ -6,6 +6,7 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.realtime.Realtime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -19,8 +20,17 @@ object SupabaseClient {
             supabaseUrl = BuildConfig.SUPABASE_URL,
             supabaseKey = BuildConfig.SUPABASE_ANON_KEY   // publishable/anon; NEVER the secret key
         ) {
-            install(Auth)        // persists + auto-refreshes session (autoLoadFromStorage = true)
+            install(Auth) {
+                // Default lifecycle callbacks stop auto-refresh and set SessionStatus.Initializing on
+                // ON_STOP -> a backgrounded widget/worker reads a null token -> ANON -> RLS returns
+                // nothing (the real "empty widget" root cause; verified in 3.6.0 setupPlatform.kt).
+                // Off = the session stays Authenticated in memory; WE own refresh instead
+                // (TodoSyncWorker + on-resume call refreshCurrentSession()).
+                enableLifecycleCallbacks = false
+                alwaysAutoRefresh = true      // refresh job keeps running while the process is alive
+            }
             install(Postgrest)
+            install(Realtime)
         }
     }
 

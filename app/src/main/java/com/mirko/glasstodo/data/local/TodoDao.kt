@@ -22,6 +22,8 @@ interface TodoDao {
     @Query("DELETE FROM todos WHERE id = :id")
     suspend fun hardDelete(id: String)
 
-    @Query("DELETE FROM todos WHERE id NOT IN (:keepIds)")
+    // PENDING rows are local writes the server hasn't seen yet (offline add / tombstone) — a server
+    // snapshot doesn't contain them, so dropping them here would lose data; the sync drain pushes them.
+    @Query("DELETE FROM todos WHERE id NOT IN (:keepIds) AND syncStatus != 'PENDING'")
     suspend fun deleteMissing(keepIds: List<String>)
 }
