@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -52,7 +53,8 @@ class RealtimeSyncTest {
         onSnapshot: suspend () -> Unit = {},
     ) = RealtimeSync(store, scope, authenticated, snapshots, status, onSnapshot)
 
-    private fun storeWith(remote: TodoRemote, dispatcher: UnconfinedTestDispatcher) =
+    // UnconfinedTestDispatcher is a factory FUNCTION, not a class — the type is TestDispatcher.
+    private fun storeWith(remote: TodoRemote, dispatcher: TestDispatcher) =
         TodoStore(db.todoDao(), remote, auth, io = dispatcher)
 
     @Before fun setup() {
