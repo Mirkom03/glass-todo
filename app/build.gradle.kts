@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.roborazzi)
 }
 
 // Keys: env (CI) -> local.properties (dev) -> empty. Anon key is public, but injecting keeps it out of git.
@@ -48,8 +49,8 @@ android {
         applicationId = "com.mirko.glasstodo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.2.0"
+        versionCode = 8
+        versionName = "1.3.0"
         buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -63,6 +64,11 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true   // Robolectric/Roborazzi need merged resources
+            all {
+                // Roborazzi renders through Robolectric's native graphics; without this it captures blanks.
+                it.systemProperty("robolectric.graphicsMode", "NATIVE")
+                it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+            }
         }
     }
 
@@ -95,8 +101,8 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.runtime.compose)
 
-    implementation(libs.haze)
-    implementation(libs.haze.materials)
+    // Haze (the liquid-glass blur) is gone with the "Glass Todo" identity: the redesign is flat ink,
+    // one accent, and type. A blur nobody sees is 300 kB of APK and a frame of GPU per scroll.
 
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.postgrest)
@@ -127,4 +133,11 @@ dependencies {
     testImplementation(libs.room.testing)
     testImplementation(libs.glance.testing)
     testImplementation(libs.glance.appwidget.testing)
+
+    // Screenshot evidence: renders the real composables (and the widget's RemoteViews) to PNG on the JVM.
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
 }

@@ -27,16 +27,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mirko.glasstodo.data.AuthRepository
 import com.mirko.glasstodo.di.ServiceLocator
-import com.mirko.glasstodo.ui.theme.DeepNavy
-import com.mirko.glasstodo.ui.theme.GlassTheme
+import com.mirko.glasstodo.ui.theme.Chalk2
+import com.mirko.glasstodo.ui.theme.Cyan
+import com.mirko.glasstodo.ui.theme.Ink
+import com.mirko.glasstodo.ui.theme.ListoTheme
 import com.mirko.glasstodo.update.Updater
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.Dispatchers
@@ -49,7 +54,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            GlassTheme {
+            ListoTheme {
                 // The session is the gate: Initializing is NOT "signed out" (v1 flashed the login form).
                 val status by auth.sessionStatus.collectAsStateWithLifecycle()
 
@@ -62,7 +67,7 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize()) {
                     when (status) {
                         is SessionStatus.Authenticated -> TodoScreen(rememberTodoViewModel())
-                        is SessionStatus.Initializing -> Surface(color = DeepNavy) { ShimmerList(Modifier.fillMaxSize()) }
+                        is SessionStatus.Initializing -> Surface(color = Ink) { ShimmerList(Modifier.fillMaxSize()) }
                         else -> SignIn(auth)   // NotAuthenticated | RefreshFailure
                     }
                     UpdateGate()
@@ -88,15 +93,21 @@ private fun SignIn(auth: AuthRepository) {
     var pass by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    Surface(color = DeepNavy) {
+    Surface(color = Ink) {
         Column(
             Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Glass Todo", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(4.dp))
-            Text("Inicia sesión una vez", style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(24.dp))
+            Text(
+                "Listo",
+                color = Cyan,
+                fontSize = 44.sp,
+                fontWeight = FontWeight.Light,
+                letterSpacing = (-0.03).em,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text("Inicia sesión una vez", color = Chalk2, fontSize = 15.sp)
+            Spacer(Modifier.height(28.dp))
             OutlinedTextField(
                 email, { email = it },
                 label = { Text("Email") },

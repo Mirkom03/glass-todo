@@ -1,4 +1,6 @@
 <resources>
-    <string name="app_name">Glass Todo</string>
-    <string name="widget_description">Tus tareas, en cristal</string>
+    <string name="app_name">Listo</string>
+    <string name="widget_description">Lo que queda por hacer</string>
+    <string name="widget_add">Añadir tarea</string>
+    <string name="widget_tags">Ver etiquetas</string>
 </resources>

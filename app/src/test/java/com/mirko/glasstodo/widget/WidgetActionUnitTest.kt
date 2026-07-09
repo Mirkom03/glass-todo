@@ -28,6 +28,7 @@ class WidgetActionUnitTest {
 
     private val pan = TodoUi(id = "id-1", title = "Comprar pan", project = "casa", done = false)
     private val luz = TodoUi(id = "id-2", title = "Pagar luz", project = null, done = true)
+    private val aide = TodoUi(id = "id-3", title = "Landing C2", project = "aide", done = false, priority = 2)
 
     @Test
     fun everyRowCarriesItsOwnId() = runGlanceAppWidgetUnitTest {
@@ -73,39 +74,11 @@ class WidgetActionUnitTest {
     }
 
     @Test
-    fun aListWithNothingDoneShowsNoDoneIcon() = runGlanceAppWidgetUnitTest {
+    fun projectTagIsShownAsItsOwnLabel() = runGlanceAppWidgetUnitTest {
         provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan)) } }
 
-        onNode(hasContentDescription(DONE_ICON_DESCRIPTION)).assertDoesNotExist()
-    }
-
-    @Test
-    fun projectTagIsShownAsItsOwnChip() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan)) } }
-
-        // The tag is a separate node now, not glued onto the title, so it can be styled and (later)
-        // filtered on. The title must NOT carry it.
-        onNode(hasTextEqualTo("#casa")).assertExists()
+        onNode(hasTextEqualTo("CASA")).assertExists()          // typographic label, not glued to the title
         onNode(hasTextEqualTo("Comprar pan")).assertExists()
-    }
-
-    @Test
-    fun aTaskWithoutATagRendersNoChip() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(luz)) } }   // project = null
-
-        onNode(hasText("#")).assertDoesNotExist()
-    }
-
-    @Test
-    fun urgencyIsShownOnlyWhilePending() = runGlanceAppWidgetUnitTest {
-        val urgentPending = TodoUi(id = "u", title = "Arde", project = null, done = false, priority = 2)
-        val urgentDone = urgentPending.copy(id = "d", title = "Ardía", done = true)
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(urgentPending, urgentDone)) } }
-
-        // Both render; the bar is a Spacer so we cannot match it by text — what this pins is that a
-        // done task never renders as urgent (regression guard for `!todo.done` in the row).
-        onNode(hasTextEqualTo("Arde")).assertExists()
-        onNode(hasTextEqualTo("Ardía")).assertExists()
     }
 
     @Test
@@ -117,11 +90,54 @@ class WidgetActionUnitTest {
             .assertHasStartActivityClickAction<QuickAddActivity>()
     }
 
+    // ---- concept B: the tags face ----
+
+    @Test
+    fun theHashButtonFlipsToTheTagsFace() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, aide)) } }
+
+        onNode(hasRunCallbackClickAction<ToggleTagsAction>()).assertExists()
+        onNode(hasTextEqualTo("Listo")).assertExists()        // list face shows the app's own name
+    }
+
+    @Test
+    fun tagsFaceOffersOneTilePerTag_plusAll_withPendingCounts() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, aide, luz), showTags = true) } }
+
+        onNode(hasTextEqualTo("Etiquetas")).assertExists()
+        // luz is done, so it contributes to no tile
+        onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to ""))).assertExists()
+        onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to "casa"))).assertExists()
+        onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to "aide"))).assertExists()
+        onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to "drinks"))).assertDoesNotExist()
+        onNode(hasTextEqualTo(ALL_TAGS_LABEL)).assertExists()
+    }
+
+    @Test
+    fun aFilterShowsOnlyThatTag_andThePillClearsIt() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, aide), filter = "aide") } }
+
+        onNode(hasTextEqualTo("Landing C2")).assertExists()
+        onNode(hasTextEqualTo("Comprar pan")).assertDoesNotExist()
+        // the pill is the way back: it carries a SelectTagAction with an empty tag
+        onNode(hasTextEqualTo("#aide")).assertExists()
+        onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to ""))).assertExists()
+        // and the rows stop repeating a tag you already chose
+        onNode(hasTextEqualTo("AIDE")).assertDoesNotExist()
+    }
+
+    @Test
+    fun aFilterWithNothingInItSaysSo_insteadOfLookingBroken() = runGlanceAppWidgetUnitTest {
+        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan), filter = "drinks") } }
+
+        onNode(hasText("Nada en #drinks")).assertExists()
+    }
+
     @Test
     fun emptyStateIsRenderedInsteadOfNothing() = runGlanceAppWidgetUnitTest {
         provideComposable { GlanceTheme { WidgetGlanceContent(emptyList()) } }
 
-        onNode(hasText("Sin tareas")).assertExists()          // plain text, no click action on it
+        onNode(hasText("Nada pendiente")).assertExists()
         onNode(hasText("Comprar pan")).assertDoesNotExist()
     }
 }

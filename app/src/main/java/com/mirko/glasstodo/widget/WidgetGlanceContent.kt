@@ -8,12 +8,15 @@ import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.action.Action
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.lazy.GridCells
 import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.LazyVerticalGrid
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -36,65 +39,222 @@ import com.mirko.glasstodo.domain.TodoUi
 import com.mirko.glasstodo.domain.Urgency
 import com.mirko.glasstodo.ui.urgencyColor
 
-/** The widget test matches the '+' button on this. Keep them in sync. */
+/** The widget tests match on these. Keep them in sync. */
 const val ADD_BUTTON_DESCRIPTION = "Añadir tarea"
-
-/** Content descriptions of the per-row state icon — the widget test matches on these. */
+const val TAGS_BUTTON_DESCRIPTION = "Ver etiquetas"
 const val DONE_ICON_DESCRIPTION = "Hecha"
 const val PENDING_ICON_DESCRIPTION = "Pendiente"
+const val ALL_TAGS_LABEL = "Todas"
 
 /**
  * The ONE composable the real widget and the unit tests both render — that is what makes the widget
- * testable at all. RemoteViews/Glance cannot blur, so there is no liquid glass here: a flat rounded
- * surface on the Material You palette is the honest result.
+ * testable at all.
+ *
+ * Two faces, one widget. The list never gives up height to a filter bar; the `#` button flips to a
+ * grid of tags with their pending counts, and picking one flips back to a filtered list. Height is
+ * the scarce resource on a home screen, so the filter lives on the other side of the card.
+ *
+ * RemoteViews cannot blur, so there is no glass here either: flat surface, one accent, type.
  */
 @Composable
-fun WidgetGlanceContent(todos: List<TodoUi>) {
+fun WidgetGlanceContent(
+    todos: List<TodoUi>,
+    filter: String? = null,
+    showTags: Boolean = false,
+    /**
+     * Only the CONTAINER changes, never a row. Glance's LazyColumn/LazyVerticalGrid become RemoteViews
+     * collection adapters, and an adapter is not populated when you inflate RemoteViews outside an
+     * AppWidgetHost — so the screenshot harness would render an empty widget. Screenshots pass
+     * `lazy = false` to get a plain Column; production always scrolls.
+     */
+    lazy: Boolean = true,
+) {
+    val visible = todos.filter { filter == null || it.project == filter }
+
     Column(
         GlanceModifier
             .fillMaxSize()
             .background(GlanceTheme.colors.widgetBackground)
-            .padding(14.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Tareas",
-                style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-            Spacer(GlanceModifier.defaultWeight())
-            Image(
-                provider = ImageProvider(R.drawable.ic_add),
-                contentDescription = ADD_BUTTON_DESCRIPTION,
-                modifier = GlanceModifier
-                    .size(38.dp)
-                    .cornerRadius(19.dp)
-                    .background(GlanceTheme.colors.primaryContainer)
-                    .padding(9.dp)
-                    // Opens an Activity directly: Android 12 bans broadcast -> activity trampolines.
-                    .clickable(actionStartActivity<QuickAddActivity>()),
-            )
-        }
+        Header(filter = filter, showTags = showTags)
         Spacer(GlanceModifier.height(10.dp))
 
-        if (todos.isEmpty()) {
-            Text(
-                "Sin tareas · toca + para añadir",
+        when {
+            showTags -> TagGrid(todos, lazy)
+            visible.isEmpty() -> Text(
+                if (filter == null) "Nada pendiente" else "Nada en #$filter",
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 13.sp),
             )
-        } else {
-            LazyColumn {
-                items(todos, itemId = { it.id.hashCode().toLong() }) { todo -> TodoRow(todo) }
+            // Once you have filtered, every row carries the same tag — repeating it is noise, and it
+            // steals the width that makes titles wrap.
+            lazy -> LazyColumn {
+                items(visible, itemId = { it.id.hashCode().toLong() }) { todo ->
+                    TodoRow(todo, showTag = filter == null)
+                }
+            }
+            else -> Column { visible.forEach { TodoRow(it, showTag = filter == null) } }
+        }
+    }
+}
+
+@Composable
+private fun Header(filter: String?, showTags: Boolean) {
+    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        when {
+            showTags -> Title("Etiquetas")
+            filter != null -> {
+                // The filter pill IS the way back: tapping it shows everything again.
+                Text(
+                    "#$filter",
+                    maxLines = 1,
+                    modifier = GlanceModifier
+                        .cornerRadius(9.dp)
+                        .background(GlanceTheme.colors.secondaryContainer)
+                        .padding(horizontal = 9.dp, vertical = 3.dp)
+                        .clickable(actionRunCallback<SelectTagAction>(
+                            actionParametersOf(SelectTagAction.tagKey to "")
+                        )),
+                    style = TextStyle(
+                        color = GlanceTheme.colors.onSecondaryContainer,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+            }
+            else -> Title("Listo")
+        }
+        Spacer(GlanceModifier.defaultWeight())
+        CircleButton(
+            label = "#",
+            description = TAGS_BUTTON_DESCRIPTION,
+            highlighted = showTags,
+            action = actionRunCallback<ToggleTagsAction>(),
+        )
+        Spacer(GlanceModifier.width(6.dp))
+        AddButton()
+    }
+}
+
+@Composable
+private fun Title(text: String) {
+    Text(
+        text,
+        style = TextStyle(
+            color = GlanceTheme.colors.onSurface,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+        ),
+    )
+}
+
+@Composable
+private fun CircleButton(label: String, description: String, highlighted: Boolean, action: Action) {
+    // Glance has no content description on Text, so the tests match this button by its label.
+    Text(
+        label,
+        modifier = GlanceModifier
+            .size(30.dp)
+            .cornerRadius(15.dp)
+            .background(
+                if (highlighted) GlanceTheme.colors.primary else GlanceTheme.colors.secondaryContainer
+            )
+            .padding(top = 5.dp)
+            .clickable(action),
+        style = TextStyle(
+            color = if (highlighted) GlanceTheme.colors.onPrimary else GlanceTheme.colors.onSecondaryContainer,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = androidx.glance.text.TextAlign.Center,
+        ),
+    )
+}
+
+@Composable
+private fun AddButton() {
+    Image(
+        provider = ImageProvider(R.drawable.ic_add),
+        contentDescription = ADD_BUTTON_DESCRIPTION,
+        // ic_add is hardcoded white; untinted it was invisible on the light Material You surface.
+        colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimaryContainer),
+        modifier = GlanceModifier
+            .size(30.dp)
+            .cornerRadius(15.dp)
+            .background(GlanceTheme.colors.primaryContainer)
+            .padding(7.dp)
+            // Opens an Activity directly: Android 12 bans broadcast -> activity trampolines.
+            .clickable(actionStartActivity<QuickAddActivity>()),
+    )
+}
+
+@Composable
+private fun TagGrid(todos: List<TodoUi>, lazy: Boolean) {
+    val pending = todos.filter { !it.done }
+    // Counts are of PENDING work: a tag whose tasks are all done should not shout for attention.
+    val tags = pending.mapNotNull { it.project?.takeIf(String::isNotBlank) }
+        .groupingBy { it }.eachCount()
+        .toList().sortedByDescending { it.second }
+
+    val tiles = listOf(ALL_TAGS_LABEL to pending.size) + tags
+
+    if (lazy) {
+        LazyVerticalGrid(gridCells = GridCells.Fixed(2)) {
+            items(tiles, itemId = { it.first.hashCode().toLong() }) { (name, count) ->
+                TagTile(name = name, count = count, all = name == ALL_TAGS_LABEL)
+            }
+        }
+    } else {
+        Column {
+            tiles.chunked(2).forEach { pair ->
+                Row(GlanceModifier.fillMaxWidth()) {
+                    pair.forEach { (name, count) ->
+                        Column(GlanceModifier.defaultWeight()) {
+                            TagTile(name = name, count = count, all = name == ALL_TAGS_LABEL)
+                        }
+                    }
+                    if (pair.size == 1) Spacer(GlanceModifier.defaultWeight())
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TodoRow(todo: TodoUi) {
+private fun TagTile(name: String, count: Int, all: Boolean) {
+    Column(
+        GlanceModifier
+            .fillMaxWidth()
+            .padding(2.dp)
+            .cornerRadius(12.dp)
+            .background(if (all) GlanceTheme.colors.primaryContainer else GlanceTheme.colors.secondaryContainer)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .clickable(
+                actionRunCallback<SelectTagAction>(
+                    actionParametersOf(SelectTagAction.tagKey to if (all) "" else name)
+                )
+            )
+    ) {
+        Text(
+            if (all) name else "#$name",
+            maxLines = 1,
+            style = TextStyle(
+                color = if (all) GlanceTheme.colors.onPrimaryContainer else GlanceTheme.colors.onSecondaryContainer,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+        )
+        Text(
+            "$count",
+            style = TextStyle(
+                color = if (all) GlanceTheme.colors.onPrimaryContainer else GlanceTheme.colors.onSecondaryContainer,
+                fontSize = 11.sp,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun TodoRow(todo: TodoUi, showTag: Boolean = true) {
     Row(
         GlanceModifier
             .fillMaxWidth()
@@ -110,19 +270,20 @@ private fun TodoRow(todo: TodoUi) {
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Urgency reads as a bar on the leading edge. Normal shows nothing — the absence of a
+        // Urgency reads as a rule on the leading edge. Normal shows nothing — the absence of a
         // signal IS the signal — and a done task never shouts, whatever its urgency was.
         val urgency = Urgency.of(todo.priority)
-        val showUrgency = urgency != Urgency.NORMAL && !todo.done
-        if (showUrgency) {
+        if (urgency != Urgency.NORMAL && !todo.done) {
             Spacer(
                 GlanceModifier
-                    .width(4.dp)
-                    .height(24.dp)
+                    .width(3.dp)
+                    .height(22.dp)
                     .cornerRadius(2.dp)
                     .background(ColorProvider(urgencyColor(urgency)))
             )
             Spacer(GlanceModifier.width(8.dp))
+        } else {
+            Spacer(GlanceModifier.width(11.dp))
         }
 
         // Deliberately NOT Glance's CheckBox. On API 31+ its translator makes the checkbox View both
@@ -133,10 +294,8 @@ private fun TodoRow(todo: TodoUi) {
         Image(
             provider = ImageProvider(if (todo.done) R.drawable.ic_check_on else R.drawable.ic_check_off),
             contentDescription = if (todo.done) DONE_ICON_DESCRIPTION else PENDING_ICON_DESCRIPTION,
-            // ic_check_off is a bare white stroke — invisible on the light Material You widget
-            // background — so tint it. ic_check_on is two-tone on purpose and reads on both themes.
             colorFilter = if (todo.done) null else ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
-            modifier = GlanceModifier.size(22.dp),
+            modifier = GlanceModifier.size(20.dp),
         )
         Spacer(GlanceModifier.width(10.dp))
         Text(
@@ -149,17 +308,16 @@ private fun TodoRow(todo: TodoUi) {
                 textDecoration = if (todo.done) TextDecoration.LineThrough else null,
             ),
         )
-        todo.project?.takeIf { it.isNotBlank() }?.let { tag ->
-            Spacer(GlanceModifier.width(6.dp))
-            Text(
-                "#$tag",
-                maxLines = 1,
-                modifier = GlanceModifier
-                    .cornerRadius(8.dp)
-                    .background(GlanceTheme.colors.secondaryContainer)
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-                style = TextStyle(color = GlanceTheme.colors.onSecondaryContainer, fontSize = 11.sp),
-            )
+        if (showTag) {
+            todo.project?.takeIf { it.isNotBlank() }?.let { tag ->
+                Spacer(GlanceModifier.width(8.dp))
+                // A typographic label, not a coloured chip: the accent belongs to the check.
+                Text(
+                    tag.uppercase(),
+                    maxLines = 1,
+                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp),
+                )
+            }
         }
     }
 }

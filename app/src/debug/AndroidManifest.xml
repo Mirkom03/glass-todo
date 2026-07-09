@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only. Robolectric hosts Compose tests inside a real ComponentActivity and refuses to start
+  one that is not declared ("Unable to resolve activity for Intent ... ComponentActivity"), and
+  Roborazzi will not capture a View whose context is not an Activity. This declaration exists purely
+  so the JVM screenshot tests can run; it never reaches the release APK.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false" />
+    </application>
+</manifest>
