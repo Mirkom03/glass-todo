@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.glance.appwidget.updateAll
 import com.mirko.glasstodo.data.AuthRepository
 import com.mirko.glasstodo.di.ServiceLocator
 import com.mirko.glasstodo.widget.TodoGlanceWidget
