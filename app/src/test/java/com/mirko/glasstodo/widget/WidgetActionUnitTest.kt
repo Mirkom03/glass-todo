@@ -1,6 +1,5 @@
 package com.mirko.glasstodo.widget
 
-import androidx.glance.GlanceTheme
 import androidx.glance.action.actionParametersOf
 import androidx.glance.appwidget.testing.unit.hasRunCallbackClickAction
 import androidx.glance.appwidget.testing.unit.isChecked
@@ -19,6 +18,9 @@ import org.robolectric.RobolectricTestRunner
  * The regression tests for the widget. No launcher, no emulator: it renders the exact composable the
  * real widget renders and asserts what gets registered on it.
  *
+ * No GlanceTheme wrapper anywhere — the content carries the app's own palette and reads nothing from
+ * the system theme. That absence is itself the fix for «parecen totalmente diferentes».
+ *
  * Robolectric is REQUIRED even though `runGlanceAppWidgetUnitTest` is a "JVM" API: Glance's
  * `ActionParameters` is backed by a real `android.os.Bundle`, so on the plain JVM every test dies
  * with "Method putInt in android.os.BaseBundle not mocked".
@@ -32,7 +34,7 @@ class WidgetActionUnitTest {
 
     @Test
     fun everyRowCarriesItsOwnId() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, luz)) } }
+        provideComposable { WidgetGlanceContent(listOf(pan, luz)) }
 
         // v1 shared ONE mutable PendingIntent template across rows and merged per-row fill-in extras
         // into it; when a launcher dropped the merge the id arrived null and the tap did nothing.
@@ -59,7 +61,7 @@ class WidgetActionUnitTest {
      */
     @Test
     fun rowsContainNoCheckableNodeThatCouldSwallowTheTap() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, luz)) } }
+        provideComposable { WidgetGlanceContent(listOf(pan, luz)) }
 
         onNode(isChecked()).assertDoesNotExist()
         onNode(isNotChecked()).assertDoesNotExist()
@@ -67,7 +69,7 @@ class WidgetActionUnitTest {
 
     @Test
     fun doneStateIsShownByTheRowIcon() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, luz)) } }
+        provideComposable { WidgetGlanceContent(listOf(pan, luz)) }
 
         onNode(hasContentDescription(PENDING_ICON_DESCRIPTION)).assertExists()   // "Comprar pan"
         onNode(hasContentDescription(DONE_ICON_DESCRIPTION)).assertExists()      // "Pagar luz"
@@ -75,7 +77,7 @@ class WidgetActionUnitTest {
 
     @Test
     fun projectTagIsShownAsItsOwnLabel() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan)) } }
+        provideComposable { WidgetGlanceContent(listOf(pan)) }
 
         onNode(hasTextEqualTo("CASA")).assertExists()          // typographic label, not glued to the title
         onNode(hasTextEqualTo("Comprar pan")).assertExists()
@@ -83,28 +85,47 @@ class WidgetActionUnitTest {
 
     @Test
     fun addButtonStartsQuickAddActivity_notABroadcast() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(emptyList()) } }
+        provideComposable { WidgetGlanceContent(emptyList()) }
 
         // Android 12 bans broadcast -> activity trampolines; this must be a start-activity action.
         onNode(hasContentDescription(ADD_BUTTON_DESCRIPTION))
             .assertHasStartActivityClickAction<QuickAddActivity>()
     }
 
+    // ---- the header is the summary, same as the app ----
+
+    @Test
+    fun headerCountsPendingWork_likeTheAppHeader() = runGlanceAppWidgetUnitTest {
+        provideComposable { WidgetGlanceContent(listOf(pan, aide, luz)) }
+
+        // luz is done: 2 pending. The count and its label, not an app-name title.
+        onNode(hasTextEqualTo("2")).assertExists()
+        onNode(hasTextEqualTo("pendientes")).assertExists()
+    }
+
+    @Test
+    fun zeroPendingShowsTheAppsOwnWord() = runGlanceAppWidgetUnitTest {
+        provideComposable { WidgetGlanceContent(listOf(luz)) }
+
+        // The payoff of the name, on the home screen too.
+        onNode(hasTextEqualTo("Listo.")).assertExists()
+    }
+
     // ---- concept B: the tags face ----
 
     @Test
     fun theHashButtonFlipsToTheTagsFace() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, aide)) } }
+        provideComposable { WidgetGlanceContent(listOf(pan, aide)) }
 
         onNode(hasRunCallbackClickAction<ToggleTagsAction>()).assertExists()
-        onNode(hasTextEqualTo("Listo")).assertExists()        // list face shows the app's own name
+        onNode(hasTextEqualTo("2")).assertExists()            // list face leads with the count
     }
 
     @Test
     fun tagsFaceOffersOneTilePerTag_plusAll_withPendingCounts() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, aide, luz), showTags = true) } }
+        provideComposable { WidgetGlanceContent(listOf(pan, aide, luz), showTags = true) }
 
-        onNode(hasTextEqualTo("Etiquetas")).assertExists()
+        onNode(hasTextEqualTo("ETIQUETAS")).assertExists()    // named in the app's section-rule voice
         // luz is done, so it contributes to no tile
         onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to ""))).assertExists()
         onNode(hasRunCallbackClickAction<SelectTagAction>(actionParametersOf(SelectTagAction.tagKey to "casa"))).assertExists()
@@ -115,7 +136,7 @@ class WidgetActionUnitTest {
 
     @Test
     fun aFilterShowsOnlyThatTag_andThePillClearsIt() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan, aide), filter = "aide") } }
+        provideComposable { WidgetGlanceContent(listOf(pan, aide), filter = "aide") }
 
         onNode(hasTextEqualTo("Landing C2")).assertExists()
         onNode(hasTextEqualTo("Comprar pan")).assertDoesNotExist()
@@ -128,16 +149,25 @@ class WidgetActionUnitTest {
 
     @Test
     fun aFilterWithNothingInItSaysSo_insteadOfLookingBroken() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(listOf(pan), filter = "drinks") } }
+        provideComposable { WidgetGlanceContent(listOf(pan), filter = "drinks") }
 
         onNode(hasText("Nada en #drinks")).assertExists()
     }
 
     @Test
     fun emptyStateIsRenderedInsteadOfNothing() = runGlanceAppWidgetUnitTest {
-        provideComposable { GlanceTheme { WidgetGlanceContent(emptyList()) } }
+        provideComposable { WidgetGlanceContent(emptyList()) }
 
-        onNode(hasText("Nada pendiente")).assertExists()
+        // The app's own words for the same state — one voice across surfaces.
+        onNode(hasText("Nada que hacer")).assertExists()
         onNode(hasText("Comprar pan")).assertDoesNotExist()
+    }
+
+    @Test
+    fun compactFaceDropsTheTagLabel_soTheTitleKeepsTheWholeLine() = runGlanceAppWidgetUnitTest {
+        provideComposable { WidgetGlanceContent(listOf(pan), compact = true) }
+
+        onNode(hasTextEqualTo("Comprar pan")).assertExists()
+        onNode(hasTextEqualTo("CASA")).assertDoesNotExist()
     }
 }

@@ -6,52 +6,31 @@
 
 ---
 
-# ⏭️ EMPIEZA AQUÍ — trabajo pendiente (rechazado por Mirko el 2026-07-09)
+# ⏭️ EMPIEZA AQUÍ — trabajo pendiente
 
-v1.3.0 está publicada y funciona, pero Mirko rechazó **dos cosas**. Ninguna está arreglada.
+Mirko rechazó **dos cosas** de v1.3.0. La 1 (widget ≠ app) quedó **ARREGLADA el 2026-07-09**
+(v1.3.1); la 2 (el logo) sigue **PENDIENTE** y necesita elección de Mirko.
 
-## 1. El widget no se parece a la app  ← BUG, no opinión
+## 1. ✅ RESUELTO — el widget ya viste la identidad de la app (v1.3.1)
 
-**Causa raíz, ya localizada:** `TodoGlanceWidget.provideGlance` envuelve el contenido en
-`GlanceTheme { ... }` **sin pasar `colors`**. Sin `colors`, Glance usa los **colores dinámicos del
-sistema (Material You)**: fondo lavanda claro, acentos del wallpaper. La app, en cambio, se
-compromete a una identidad propia (`ListoTheme`: fondo `Ink #0A0B0F`, tinta `Chalk`, un único acento
-`Cyan #35E0F0`). Resultado: parecen dos apps distintas. Mirko: *«parecen totalmente diferentes»*.
+La causa raíz era `GlanceTheme { }` sin `colors` → Material You. El arreglo fue más radical que
+re-mapear roles: **el widget ya no consulta GlanceTheme en ningún sitio** — importa los tokens de
+`ui/theme/Theme.kt` (`Ink/Chalk/Cyan…`) como `ColorProvider` fijos, el mismo idioma que usa
+`TaskRow` en la app. Además se igualó el lenguaje: cabecera = contador + `LinearProgressIndicator`
+de 2dp (la regla-firma), check = anillo que se rellena de cian (drawables calcados de `TaskCheck`),
+tiles/botones/pill sobre `InkRaised` + hairline, «Listo.» en cian al llegar a cero,
+`QuickAddActivity` envuelta en `ListoTheme`, y cara `compact` (buckets de 110dp, vía `LocalSize`):
+1 línea por tarea con elipsis y sin rótulo de etiqueta.
 
-**Arreglo (API ya verificada contra la fuente de Glance 1.1.1):**
+Verificado con renders Roborazzi ANTES/DESPUÉS + panel adversarial de 3 jueces (identidad §39 /
+craft / disciplina del acento): PASS. Detalles finos que salieron de ahí y están aplicados: tile de
+filtro activo con anillo cian (un anillo = «actual»; el relleno cian queda reservado al check
+hecho), `#` activo como anillo+glifo cian (no disco macizo), «N pendiente(s)» en la cara filtrada,
+copy del vacío = «Nada que hacer» (voz de la app). Límite conocido y aceptado: Glance solo tiene
+FontWeight Normal/Medium/Bold, así que el numeral de cabecera no puede ser Light como el 52sp de
+la app — misma idea, a escala, distinto peso.
 
-```kotlin
-// glance-material3 YA está en app/build.gradle.kts (libs.glance.material3)
-// androidx.glance.material3.ColorProviders(light: ColorScheme, dark: ColorScheme): ColorProviders
-// androidx.glance.GlanceTheme(colors: ColorProviders, content: @Composable () -> Unit)
-
-// 1) exponer el esquema de ui/theme/Theme.kt (hoy es `private val Scheme`)
-val ListoScheme = darkColorScheme(/* … ya está escrito … */)
-
-// 2) mismo esquema en claro y oscuro: la app se compromete a un solo mundo visual
-val ListoGlanceColors = ColorProviders(light = ListoScheme, dark = ListoScheme)
-
-// 3) en TodoGlanceWidget.provideGlance y en TODOS los tests/screenshots:
-GlanceTheme(colors = ListoGlanceColors) { WidgetGlanceContent(...) }
-```
-
-Sitios a tocar: `widget/TodoGlanceWidget.kt`, `widget/WidgetScreenshotTest.kt`,
-`widget/WidgetActionUnitTest.kt` (10 usos de `GlanceTheme { }`).
-
-**No basta con la paleta.** Además hay que igualar el lenguaje visual, porque hoy divergen:
-
-| | App | Widget hoy | Debería |
-|---|---|---|---|
-| Cabecera | nº pendientes 52sp + regla de progreso | «Listo» 17sp bold | misma idea, a escala |
-| Etiqueta | rótulo `PERSONAL` en mayúsculas, `Chalk3` | idem 9sp | ok |
-| Check | círculo que se rellena de cian | `ic_check_on/off` (drawables) | mismo círculo |
-| Fondo | `Ink` plano | `widgetBackground` dinámico | `Ink` |
-| Fichas de etiqueta | — | `secondaryContainer` dinámico | superficie `InkRaised` + hairline |
-
-Sugerencia: llevar la **regla de progreso** también al widget (es la firma de la app) y usar el mismo
-círculo de check dibujado, no los vectores `ic_check_*`.
-
-## 2. El logo es malo  ← rechazado sin matices
+## 2. El logo es malo  ← rechazado sin matices, SIGUE PENDIENTE
 
 Mirko: *«el logo es una mierda hazlo bien»*. El actual (`res/drawable/ic_launcher_foreground.xml`)
 es un tick con contraste de trazo + un punto. **Un check sigue siendo el símbolo por defecto de
@@ -80,9 +59,10 @@ el monochrome tiene que ser **un solo color plano**; se juzga a 96 px.
 
 ## Estado real (verificado)
 
-- `v1.3.0` publicada y firmada (cert `e6828727…ac5d`, la misma desde v1.1.0 → actualiza en sitio).
-- **77/77 tests verdes** en local y en CI.
-- Repo limpio, `main` == `origin/main`.
+- `v1.3.1` con el widget en identidad Listo; firmada con el mismo cert `e6828727…ac5d` de siempre
+  (→ actualiza en sitio desde v1.1.0+).
+- **81/81 tests verdes** en local (77 de v1.3.0 + 4 nuevos: contador de cabecera, payoff «Listo.»,
+  cara compact sin etiqueta, screenshot alldone).
 - Lo que sí quedó bien y no hay que rehacer: modo etiquetas del widget (concepto B, elegido por
   Mirko), filtro persistido por widget, urgencia, sugerencia de etiquetas, orden en SQL.
 

@@ -31,6 +31,7 @@ import com.mirko.glasstodo.data.AuthRepository
 import com.mirko.glasstodo.di.ServiceLocator
 import com.mirko.glasstodo.domain.Urgency
 import com.mirko.glasstodo.domain.parseInput
+import com.mirko.glasstodo.ui.theme.ListoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,7 +51,8 @@ class QuickAddActivity : ComponentActivity() {
                 }
             }
 
-            Surface {
+            // Opened from the widget, so it IS the widget's face too: same committed world as the app.
+            ListoTheme { Surface {
                 Column(Modifier.padding(20.dp)) {
                     Text("Nueva tarea", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(12.dp))
@@ -110,7 +112,7 @@ class QuickAddActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Guardar") }
                 }
-            }
+            } }
         }
     }
 }

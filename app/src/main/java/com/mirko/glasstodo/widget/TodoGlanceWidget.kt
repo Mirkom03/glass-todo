@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
-import androidx.glance.GlanceTheme
+import androidx.glance.LocalSize
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.provideContent
@@ -31,13 +31,15 @@ class TodoGlanceWidget : GlanceAppWidget() {
             // v1 did a runBlocking OkHttp fetch on the binder thread, which is ANR-class.
             val todos by store.observeTodos().collectAsState(initial = emptyList())
             val prefs = currentState<Preferences>()
-            GlanceTheme {
-                WidgetGlanceContent(
-                    todos = todos,
-                    filter = WidgetPrefs.filterOf(prefs),
-                    showTags = WidgetPrefs.showTagsOf(prefs),
-                )
-            }
+            // No GlanceTheme on purpose: the content carries the app's own palette. Wrapping it in
+            // the system theme is exactly how v1.3.0 came out Material-You lavender (criterio §39).
+            WidgetGlanceContent(
+                todos = todos,
+                filter = WidgetPrefs.filterOf(prefs),
+                showTags = WidgetPrefs.showTagsOf(prefs),
+                // The 110dp buckets get the one-line face; anything taller can afford wrapped titles.
+                compact = LocalSize.current.height < 150.dp,
+            )
         }
     }
 }

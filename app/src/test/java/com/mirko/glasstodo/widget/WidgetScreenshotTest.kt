@@ -7,7 +7,6 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.glance.GlanceTheme
 import androidx.glance.appwidget.ExperimentalGlanceRemoteViewsApi
 import androidx.glance.appwidget.GlanceRemoteViews
 import androidx.test.core.app.ApplicationProvider
@@ -71,24 +70,31 @@ class WidgetScreenshotTest {
 
     // lazy = false: a RemoteViews collection adapter is not populated outside an AppWidgetHost, so a
     // LazyColumn would screenshot as an empty widget. Only the container differs; the rows are real.
+    // No GlanceTheme wrapper: the content carries the app's palette itself, like the real widget.
 
     @Test fun list() = capture("list", DpSize(250.dp, 250.dp)) {
-        GlanceTheme { WidgetGlanceContent(sample, lazy = false) }
+        WidgetGlanceContent(sample, lazy = false)
     }
 
     @Test fun tags() = capture("tags", DpSize(250.dp, 250.dp)) {
-        GlanceTheme { WidgetGlanceContent(sample, showTags = true, lazy = false) }
+        WidgetGlanceContent(sample, showTags = true, lazy = false)
     }
 
     @Test fun filtered() = capture("filtered", DpSize(250.dp, 250.dp)) {
-        GlanceTheme { WidgetGlanceContent(sample, filter = "personal", lazy = false) }
+        WidgetGlanceContent(sample, filter = "personal", lazy = false)
     }
 
     @Test fun small() = capture("small", DpSize(180.dp, 110.dp)) {
-        GlanceTheme { WidgetGlanceContent(sample, lazy = false) }
+        // compact mirrors what the real widget derives from LocalSize at this bucket.
+        WidgetGlanceContent(sample, compact = true, lazy = false)
     }
 
     @Test fun empty() = capture("empty", DpSize(250.dp, 250.dp)) {
-        GlanceTheme { WidgetGlanceContent(emptyList(), lazy = false) }
+        WidgetGlanceContent(emptyList(), lazy = false)
+    }
+
+    @Test fun alldone() = capture("alldone", DpSize(250.dp, 250.dp)) {
+        // Everything resolved: the header must pay off the app's name with «Listo.» in cyan.
+        WidgetGlanceContent(sample.map { it.copy(done = true) }, lazy = false)
     }
 }
