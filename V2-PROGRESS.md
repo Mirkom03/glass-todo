@@ -6,10 +6,10 @@
 
 ---
 
-# ⏭️ EMPIEZA AQUÍ — trabajo pendiente
+# ⏭️ EMPIEZA AQUÍ
 
-Mirko rechazó **dos cosas** de v1.3.0. La 1 (widget ≠ app) quedó **ARREGLADA el 2026-07-09**
-(v1.3.1); la 2 (el logo) sigue **PENDIENTE** y necesita elección de Mirko.
+Los **dos rechazos de v1.3.0 están RESUELTOS** (2026-07-09): el widget ≠ app en v1.3.1 y el
+logo en v1.3.2. No queda trabajo de diseño pendiente; lo opcional sigue en «Next steps» (§10-12).
 
 ## 1. ✅ RESUELTO — el widget ya viste la identidad de la app (v1.3.1)
 
@@ -30,7 +30,18 @@ copy del vacío = «Nada que hacer» (voz de la app). Límite conocido y aceptad
 FontWeight Normal/Medium/Bold, así que el numeral de cabecera no puede ser Light como el 52sp de
 la app — misma idea, a escala, distinto peso.
 
-## 2. El logo es malo  ← rechazado sin matices, SIGUE PENDIENTE
+## 2. ✅ RESUELTO — logo nuevo «la lista», elegido por Mirko (v1.3.2)
+
+Se siguió el proceso al pie de la letra: 4 direcciones (ninguna un check) construidas como
+adaptive icons REALES y renderizadas con Roborazzi a 96/48/288 px, publicadas en un Artifact
+(`claude.ai/code/artifact/3ced780c…`), y Mirko eligió **B «la lista»**: la tarea pendiente entera
+en Chalk; la hecha, hundida en gris con su punto cian — la fila de la app hecha marca, el punto
+hace el trabajo del check sin dibujar un check. Descartadas: A regla de progreso (leía como
+toggle), C monograma L (recomendada por Claude, no elegida), D el punto de «Listo.».
+`ic_launcher_foreground` + `ic_launcher_monochrome` (un solo color plano) reconstruidos con la
+misma geometría; candidatos y su test borrados tras la elección.
+
+### (histórico) El rechazo original
 
 Mirko: *«el logo es una mierda hazlo bien»*. El actual (`res/drawable/ic_launcher_foreground.xml`)
 es un tick con contraste de trazo + un punto. **Un check sigue siendo el símbolo por defecto de

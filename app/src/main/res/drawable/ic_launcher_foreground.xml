@@ -1,25 +1,19 @@
 <!--
-  A tick with stroke contrast: thin on the way down, heavy on the way up. Drawn, not iconised — a
-  uniform check is the single most templated mark a todo app can have. The dot is the full stop in
-  "Listo.", sitting on the tick's baseline; it ties the wordmark to the mark.
-  108x108 adaptive viewport; everything sits inside the 66dp safe circle.
+  «La lista» — elegida por Mirko el 2026-07-09 entre 4 direcciones renderizadas a 96 px
+  (criterio §40; las otras: regla de progreso, monograma L, el punto de «Listo.»).
+  Dos tareas: la pendiente, entera y en Chalk; la hecha, hundida — más corta, gris — con su
+  punto cian. La fila de la app hecha marca: el punto hace el trabajo del check sin dibujar
+  un check. 108x108 adaptive viewport; todo dentro del círculo seguro de 66dp.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:pathData="M31,53 L44,68"
-        android:strokeColor="#35E0F0"
-        android:strokeWidth="7"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M43,67 L69,33"
-        android:strokeColor="#35E0F0"
-        android:strokeWidth="11"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M79,68 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0"
-        android:fillColor="#35E0F0" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- pending task -->
+    <path android:fillColor="#EDEFF3"
+        android:pathData="M36,40.5 h36 a4.5,4.5 0 0 1 4.5,4.5 a4.5,4.5 0 0 1 -4.5,4.5 h-36 a4.5,4.5 0 0 1 -4.5,-4.5 a4.5,4.5 0 0 1 4.5,-4.5 z" />
+    <!-- done: its cyan check-dot, then the sunken grey bar -->
+    <path android:fillColor="#35E0F0"
+        android:pathData="M36,63 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <path android:fillColor="#5C6474"
+        android:pathData="M50,58.5 h18 a4.5,4.5 0 0 1 4.5,4.5 a4.5,4.5 0 0 1 -4.5,4.5 h-18 a4.5,4.5 0 0 1 -4.5,-4.5 a4.5,4.5 0 0 1 4.5,-4.5 z" />
 </vector>
