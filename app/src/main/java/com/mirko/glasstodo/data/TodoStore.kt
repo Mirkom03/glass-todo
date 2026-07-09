@@ -67,6 +67,16 @@ class TodoStore(
             .onFailure { err -> if (err.isPermanent()) dao.upsert(prev); throw err }             // ROLLBACK
     }
 
+    /**
+     * Flip whatever Room currently holds. The widget uses this: a widget render can be seconds old,
+     * so the new value must be derived from the source of truth at tap time, never from the value
+     * that was baked into the rendered row.
+     */
+    suspend fun toggle(id: String) {
+        val prev = withContext(io) { dao.byId(id) } ?: return
+        toggle(id, !prev.done)
+    }
+
     suspend fun delete(id: String) = withContext(io) {
         val prev = dao.byId(id) ?: return@withContext
         dao.upsert(prev.copy(deleted = true, syncStatus = SyncStatus.PENDING))                   // OPTIMISTIC soft-delete

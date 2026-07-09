@@ -87,21 +87,35 @@ fun WidgetGlanceContent(todos: List<TodoUi>) {
 
 @Composable
 private fun TodoRow(todo: TodoUi) {
-    CheckBox(
-        checked = todo.done,
-        // THE tap fix. v1 gave every row the SAME mutable PendingIntent template and relied on
-        // per-row fill-in extras merging into it; some launchers drop the merge, so onReceive hit
-        // `getStringExtra(EXTRA_ID) ?: return` and the checkbox did nothing. Glance registers one
-        // typed action per item — no template, nothing to merge.
-        onCheckedChange = actionRunCallback<ToggleTodoAction>(
-            actionParametersOf(ToggleTodoAction.idKey to todo.id)
-        ),
-        modifier = GlanceModifier.fillMaxWidth().padding(top = 6.dp, bottom = 6.dp),
-        text = todo.title + (todo.project?.let { "  #$it" } ?: ""),
-        style = TextStyle(
-            color = GlanceTheme.colors.onSurface,
-            fontSize = 14.sp,
-            textDecoration = if (todo.done) TextDecoration.LineThrough else null,
-        ),
-    )
+    Row(
+        GlanceModifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 6.dp)
+            // THE tap fix. v1 gave every row the SAME mutable PendingIntent template and relied on
+            // per-row fill-in extras merging into it; launchers that drop the merge left
+            // `getStringExtra(EXTRA_ID) ?: return` and the checkbox did nothing. Glance registers one
+            // typed action per row — no template, nothing to merge — and the whole row is the target.
+            //
+            // The action lives on the Row, not on the CheckBox, for two reasons: Glance wraps a
+            // checkbox's action in an internal CompoundButtonAction that no public test API can
+            // inspect (so the wiring would be unverifiable), and a full-width row is a far better
+            // tap target on a home screen.
+            .clickable(
+                actionRunCallback<ToggleTodoAction>(
+                    actionParametersOf(ToggleTodoAction.idKey to todo.id)
+                )
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CheckBox(
+            checked = todo.done,
+            onCheckedChange = null,          // visual only; the Row owns the click
+            text = todo.title + (todo.project?.let { "  #$it" } ?: ""),
+            style = TextStyle(
+                color = GlanceTheme.colors.onSurface,
+                fontSize = 14.sp,
+                textDecoration = if (todo.done) TextDecoration.LineThrough else null,
+            ),
+        )
+    }
 }

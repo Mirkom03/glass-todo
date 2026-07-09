@@ -68,6 +68,20 @@ class TodoStoreTest {
         assertEquals(SyncStatus.PENDING, e.syncStatus)
     }
 
+    @Test fun toggleFlip_derivesTheNewValueFromRoom_notFromTheCaller() = runTest {
+        db.todoDao().upsert(TodoEntity(id = "1", userId = "u1", title = "a", done = false))
+        val s = store(FakeRemote())
+        s.toggle("1")                                               // widget path: no value passed in
+        assertEquals(true, db.todoDao().byId("1")!!.done)
+        s.toggle("1")
+        assertEquals(false, db.todoDao().byId("1")!!.done)
+    }
+
+    @Test fun toggleFlip_onMissingRow_isANoOp() = runTest {
+        store(FakeRemote()).toggle("no-existe")
+        assertEquals(0, db.todoDao().observeAll().first().size)
+    }
+
     // --- refresh() reconciliation: local PENDING writes must survive a server snapshot ---
 
     private fun serverDto(id: String, done: Boolean = false) =

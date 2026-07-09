@@ -2,9 +2,9 @@ package com.mirko.glasstodo.widget
 
 import androidx.glance.GlanceTheme
 import androidx.glance.action.actionParametersOf
-import androidx.glance.appwidget.testing.unit.assertHasRunCallbackClickAction
 import androidx.glance.appwidget.testing.unit.assertIsChecked
 import androidx.glance.appwidget.testing.unit.assertIsNotChecked
+import androidx.glance.appwidget.testing.unit.hasRunCallbackClickAction
 import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.glance.testing.unit.assertHasStartActivityClickAction
 import androidx.glance.testing.unit.hasContentDescription
@@ -34,13 +34,17 @@ class WidgetActionUnitTest {
 
         // v1 shared ONE mutable PendingIntent template across rows and merged per-row fill-in extras
         // into it; when a launcher dropped the merge the id arrived null and the tap did nothing.
-        // Each checkbox must carry its OWN id, individually registered.
-        onNode(hasText("Comprar pan")).assertHasRunCallbackClickAction<ToggleTodoAction>(
-            actionParametersOf(ToggleTodoAction.idKey to "id-1")
-        )
-        onNode(hasText("Pagar luz")).assertHasRunCallbackClickAction<ToggleTodoAction>(
-            actionParametersOf(ToggleTodoAction.idKey to "id-2")
-        )
+        // Here each row must own a separate action carrying exactly its own id. `onNode` also fails
+        // if a matcher hits more than one node, so this proves the two actions are distinct.
+        onNode(
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(ToggleTodoAction.idKey to "id-1"))
+        ).assertExists()
+        onNode(
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(ToggleTodoAction.idKey to "id-2"))
+        ).assertExists()
+        onNode(
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(ToggleTodoAction.idKey to "id-3"))
+        ).assertDoesNotExist()
     }
 
     @Test
