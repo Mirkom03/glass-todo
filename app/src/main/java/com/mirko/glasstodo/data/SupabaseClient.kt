@@ -25,10 +25,21 @@ object SupabaseClient {
     }
 
     // Blocking accessors for the widget's binder-thread / worker context.
+    // MUST await session load — the persisted session loads async, and the widget
+    // often queries before it's ready (=> null token => anon => RLS returns nothing).
     fun currentAccessTokenBlocking(): String? = runBlocking(Dispatchers.IO) {
-        runCatching { client.auth.currentAccessTokenOrNull() }.getOrNull()
+        runCatching {
+            init()
+            client.auth.awaitInitialization()
+            client.auth.currentAccessTokenOrNull()
+        }.getOrNull()
     }
 
-    fun currentUserIdBlocking(): String? =
-        runCatching { client.auth.currentUserOrNull()?.id }.getOrNull()
+    fun currentUserIdBlocking(): String? = runBlocking(Dispatchers.IO) {
+        runCatching {
+            init()
+            client.auth.awaitInitialization()
+            client.auth.currentUserOrNull()?.id
+        }.getOrNull()
+    }
 }
