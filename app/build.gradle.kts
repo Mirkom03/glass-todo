@@ -21,16 +21,35 @@ fun secret(key: String): String {
     return ""
 }
 
+// Stable release signing. Without this the APK is signed with the throwaway debug keystore that AGP
+// generates on whatever machine happens to build it — a fresh one per CI runner — so every release
+// carries a different certificate and Android refuses to install it over the previous one
+// (INSTALL_FAILED_UPDATE_INCOMPATIBLE). That is why the in-app updater never worked.
+// Keystore lives OUTSIDE the repo; CI materialises it from a base64 secret.
+val signingKeystorePath: String = secret("SIGNING_KEYSTORE_PATH")
+val signingAvailable: Boolean = signingKeystorePath.isNotBlank() && file(signingKeystorePath).exists()
+
 android {
     namespace = "com.mirko.glasstodo"
     compileSdk = 36
+
+    signingConfigs {
+        if (signingAvailable) {
+            create("release") {
+                storeFile = file(signingKeystorePath)
+                storePassword = secret("SIGNING_STORE_PASSWORD")
+                keyAlias = secret("SIGNING_KEY_ALIAS")
+                keyPassword = secret("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.mirko.glasstodo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.4"
+        versionCode = 5
+        versionName = "1.1.0"
         buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -56,7 +75,12 @@ android {
     }
 
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            // null when no keystore is configured (e.g. a contributor's clean checkout): the build
+            // still succeeds, it just produces an unsigned APK instead of failing.
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 }
 

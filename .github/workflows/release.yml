@@ -29,19 +29,46 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build debug APK (debug-signed => installable via sideload)
-        run: gradle assembleDebug --no-daemon --stacktrace
+      # Up to v1.0.4 this workflow shipped `assembleDebug`, signed with the throwaway debug keystore
+      # that AGP generates fresh on every runner. Consecutive releases therefore carried DIFFERENT
+      # certificates (v1.0.3: 77435cc2…, v1.0.4: 4a05b39e…), so Android refused to install one over
+      # the other and the in-app updater could never work. From v1.1.0 we sign with a stable key.
+      - name: Materialise the release keystore
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$SIGNING_KEYSTORE_B64" ]; then
+            echo "::error::SIGNING_KEYSTORE_B64 is not set — refusing to publish a debug-signed APK"
+            exit 1
+          fi
+          printf '%s' "$SIGNING_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          test -s "$RUNNER_TEMP/release.jks"
+
+      - name: Build signed release APK
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      # Fail loudly rather than publish an APK the phone cannot install over the previous one.
+      - name: Verify the APK carries the expected signing certificate
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name 'apksigner' | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee certs.txt
+          grep -qi 'Signer #1 certificate DN: CN=Mirko Milano Gumenyuk' certs.txt
 
       - name: Attach APK to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/release/app-release.apk
 
       - name: Upload APK as workflow artifact (for manual / non-tag runs)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: app-release
+          path: app/build/outputs/apk/release/app-release.apk
