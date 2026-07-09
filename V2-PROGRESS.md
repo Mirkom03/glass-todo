@@ -1,6 +1,11 @@
 # Glass Todo — v2 rebuild progress & handoff
 
-**Status (2026-07-09): steps 1–7b DONE and green in CI. Continue from step 7c (Roborazzi goldens), then step 8 (the Glance widget — the actual tap-bug fix).**
+**Status (2026-07-09): steps 1–7b green in CI (`cd00e44`). Steps 8+9 are WRITTEN AND PUSHED (`326247a`) but their CI run is still QUEUED — GitHub was in a "Minor Service Outage" — so they are NOT yet verified. First thing next session: check that run.**
+
+```bash
+gh run list -R Mirkom03/glass-todo --workflow android-ci.yml -L 5 --json headSha,status,conclusion
+```
+`compileDebugKotlin` already passed on the widget code once (run `29012402732` failed only on a missing `updateAll` import, now fixed), so the Glance main sources compile. What is still unproven is `WidgetActionUnitTest` — the test that proves the tap fix.
 
 Goal: rebuild the widget+app "the right way" so it's bug-free + self-verifying (the v1 widget had unreliable taps + an empty-widget bug). The FULL plan with copy-ready code for every step is in **`docs/v2-blueprint.md`** — read it. This file is the running progress + handoff. Deep research briefs are in `docs/v2-research.json`.
 
@@ -54,18 +59,30 @@ Each step must end GREEN on `android-ci` before the next.
   - `ui/MainActivity.kt` gates on `SessionStatus` (**`Initializing` is not "signed out"** — v1 flashed the login form) and calls `auth.refreshSession()` on every resume.
   - `data/AuthRepository.kt` replaces the auth half of the v1 repo. **DELETED:** `data/TodoRepository.kt`, `data/Todo.kt`.
 
+- **Steps 8 + 9** — the Glance widget (the actual tap fix) + the worker demotion. commits `ed316bd` → `e5c66fc` → `326247a`. ⚠️ **CI NOT YET GREEN — run was still queued during a GitHub outage. Verify before trusting.**
+  - **Root cause, read straight off v1's `TodoWidgetProvider.onReceive`:** every row shared ONE mutable `PendingIntent` template and relied on per-row fill-in extras merging into it. Launchers that drop the merge left `getStringExtra(EXTRA_ID) ?: return` — the checkbox did nothing. Glance registers one typed action per item: no template, nothing to merge.
+  - `widget/WidgetGlanceContent.kt` — the single composable that the real widget AND the tests render.
+  - `widget/TodoGlanceWidget.kt` — observes Room **inside `provideContent`**, so any write (app, widget tap, realtime) re-renders it. The widget never touches the network; v1 did `runBlocking` OkHttp on the binder thread (ANR-class).
+  - `widget/ToggleTodoAction.kt` — reads the NEW checked value from `ToggleableStateKey` (never recomputed from a stale render), writes Room, pushes. Runs in a WorkManager worker (~10 min budget) instead of a ~10 s BroadcastReceiver.
+  - `widget/TodoGlanceReceiver.kt` + manifest receiver; `todo_widget_info.xml` `initialLayout` → `@layout/glance_default_loading_layout`.
+  - `test/.../WidgetActionUnitTest.kt` — proves each row carries its OWN id, that `done` renders per row, and that `+` starts an Activity (not a broadcast). No emulator, no launcher.
+  - `ServiceLocator` calls `TodoGlanceWidget().updateAll(ctx)` on every realtime snapshot. `QuickAddActivity` writes through `TodoStore`.
+  - **Step 9:** `work/TodoSyncWorker.kt` = 30-min safety net that owns `refreshSession()` + one pull + `updateAll`. The 15-min poll is gone. Scheduled from `TodoGlanceReceiver.onEnabled`, cancelled in `onDisabled`.
+  - **DELETED:** `widget/{TodoWidgetProvider,TodoWidgetService,SupabaseTodosRest,TodoSyncWorker}.kt`, `res/layout/widget_todo*.xml`.
+
+## ⚠️ When this ships to the phone
+The widget's receiver class changed (`TodoWidgetProvider` → `TodoGlanceReceiver`), so **Mirko's existing home-screen widget will disappear on update and must be re-added.** That is unavoidable: a provider rename is a new widget as far as the launcher is concerned.
+
 ## ⚠️ Naming / transition rule
-The offline-first repository is **`data/TodoStore.kt`**. The v1 `TodoRepository`/`Todo` are GONE (step 7b). Still to delete at step 8: `widget/{TodoWidgetProvider,TodoWidgetService,SupabaseTodosRest}.kt` + `res/layout/widget_*.xml` (Glance replaces the RemoteViews widget; `SupabaseTodosRest` → `TodoRemoteImpl`). `widget/QuickAddActivity.kt` is kept but must be routed through `TodoStore` via `ServiceLocator`.
+The offline-first repository is **`data/TodoStore.kt`**. The whole v1 stack (`TodoRepository`, `Todo`, the RemoteViews widget, `SupabaseTodosRest`) is GONE. Nothing left to transition.
 
 ## Next steps (blueprint §6 checklist; §3 has the code, §7 has version flags)
-7c. **Roborazzi goldens**: add the roborazzi plugin + deps (§3.1/§3.2) and `TodoScreenScreenshotTest` rendering `TodoScreenContent` in its four states. Record the goldens **in CI** (`recordRoborazziDebug`, upload as an artifact, commit the PNGs) — goldens recorded on another machine will not match the CI renderer. CI then runs `verifyRoborazziDebug`. Watch out: `ShimmerList` runs an infinite animation; Robolectric freezes the clock, but pin `@Config(qualifiers = Pixel5)` + `@GraphicsMode(NATIVE)` anyway.
-8. **Glance widget** (§3.9–3.12) — the tap bug fix: `widget/{WidgetGlanceContent,TodoGlanceWidget,ToggleTodoAction,TodoGlanceReceiver}.kt`, manifest receiver, `todo_widget_info.xml` initialLayout → `@layout/glance_default_loading_layout`. Delete the v1 RemoteViews widget files. Wire `RealtimeSync.from(..., onSnapshot = { TodoGlanceWidget().updateAll(ctx) })` in `ServiceLocator` (the hook is already there). + `WidgetScreenshotTest` + `WidgetActionUnitTest` (`runGlanceAppWidgetUnitTest`).
-9. **Worker** (§3.13): `work/TodoSyncWorker.kt` = `auth.refreshCurrentSession()` + safety-net pull @30min; remove the 15-min poll. **Required:** with `enableLifecycleCallbacks=false` WE own refresh — `MainActivity` already does it on resume (step 7b); the worker must do it for the app-process-dead case.
-10. **Polish** (§3.15–3.16): haptics, `Motion.kt`, `GlassLevel`/specular edge, shimmer, widget Material You (`values-v31/colors.xml`). Re-record goldens.
-11. **Emulator tier** (§5.2–5.3): `WidgetPinAndTapTest` (UIAutomator) + the `instrumented` CI job (advisory, not the merge gate).
+7c. **Roborazzi goldens**: add the roborazzi plugin + deps (§3.1/§3.2), `TodoScreenScreenshotTest` rendering `TodoScreenContent` in its four states, and `WidgetScreenshotTest` rendering `WidgetGlanceContent`. Record the goldens **in CI** (`recordRoborazziDebug`, upload as an artifact, commit the PNGs) — goldens recorded on another machine will not match the CI renderer. CI then runs `verifyRoborazziDebug`. Watch out: `ShimmerList` runs an infinite animation; Robolectric freezes the clock, but pin `@Config(qualifiers = Pixel5)` + `@GraphicsMode(NATIVE)` anyway.
+10. **Polish** (§3.15–3.16): haptics, `Motion.kt`, `GlassLevel`/specular edge, decorrelated aurora, widget Material You (`values-v31/colors.xml`). Re-record goldens.
+11. **Emulator tier** (§5.2–5.3): `WidgetPinAndTapTest` (UIAutomator) + the `instrumented` CI job (advisory, not the merge gate). The JVM `WidgetActionUnitTest` already proves the actions are wired; this proves it end-to-end on a real launcher.
 12. **Hardening** (optional): R8, backup rules, baseline profile.
 
-When v2 is done: bump versionCode/Name, tag a new `v*` → the release APK builds; Mirko installs (or the in-app updater does it).
+**Ship it:** bump `versionCode`/`versionName` in `app/build.gradle.kts` (currently 4 / "1.0.4"), tag `v1.1.0` → `release.yml` builds the APK. v1.0.4's in-app updater will offer it. Re-add the widget to the home screen (see the receiver-rename note above).
 
 ## Gotchas learned (don't re-hit)
 - **Robolectric config** (`app/src/test/resources/robolectric.properties`): `sdk=34` (4.14 has no SDK-36 jar) + `application=android.app.Application` (the real `App.onCreate` inits Supabase/Room, which throws on the JVM). Both are REQUIRED for any Robolectric/Roborazzi test.
@@ -85,6 +102,18 @@ When v2 is done: bump versionCode/Name, tag a new `v*` → the release APK build
 - **Realtime never errors the flow on a socket drop** — it reconnects and re-subscribes silently, and the events missed during the outage are lost forever. `.catch{}` only sees the initial select/decode failures. Hence `refetchOnReconnect()`.
 - `Realtime.Status` = `DISCONNECTED | CONNECTING | CONNECTED`, exposed as `client.realtime.status: StateFlow<Status>`.
 - **Never subscribe realtime without an authenticated session** — anon + RLS = an empty snapshot that a naive `reconcile` turns into "delete everything". Gate on `SessionStatus.Authenticated`, and `distinctUntilChanged()` it (Authenticated re-emits on every token refresh).
+
+### Glance 1.1.1 — verified against the frozen API txt (AndroidX emits no `1.1.1.txt`; the 1.1.x surface is `glance/*/api/1.1.0-beta01.txt`)
+- **The blueprint had the assertion name wrong.** It is `assertHasRunCallbackClickAction<T>()`, NOT `assertHasActionRunCallbackClickAction`. There is no such symbol.
+- `runGlanceAppWidgetUnitTest {}` is a **plain-JVM** API (`androidx.glance.appwidget.testing.unit`), no Robolectric, no emulator, no opt-in annotation. Inside: `provideComposable {}`, `onNode(matcher)`.
+- `assertHasStartActivityClickAction<T : Activity>()` (reified, `androidx.glance.testing.unit`) — use this, not the `Intent` overload, or you need an Android context in a JVM test.
+- `hasText(...)` matches on **substring**; `hasTextEqualTo(...)` is the exact one. `assertExists()` / `assertDoesNotExist()` are members of `GlanceNodeAssertion`.
+- `CheckBox(checked, onCheckedChange: Action?, modifier, text, style, colors, maxLines)` — the `Action?` overload is the one that takes `actionRunCallback<T>()`.
+- `ActionParameters.Key<T>.to(value)` is a **member** of `Key`, so it wins over kotlin's stdlib `to` — no import, no ambiguity, no accidental `kotlin.Pair`.
+- `ToggleableStateKey` (`androidx.glance.appwidget.action`) carries the NEW checked value into the callback.
+- `defaultWeight()` is a **RowScope/ColumnScope member**, not a top-level import. `cornerRadius()` lives in `glance-appwidget`, `background()`/`clickable()` in glance core.
+- `GlanceTheme` is in **glance core** (`androidx.glance`); `glance-material3` is only needed to build dynamic M3 `ColorProviders`.
+- `@layout/glance_default_loading_layout` is a real public resource of glance-appwidget — confirmed in its `res/layout/`.
 
 ### Room / SQLite
 - SQLite explicitly allows `x NOT IN ()`, so `deleteMissing(emptyList())` is safe (it clears all SYNCED rows, which is the correct meaning of "the server has nothing").
