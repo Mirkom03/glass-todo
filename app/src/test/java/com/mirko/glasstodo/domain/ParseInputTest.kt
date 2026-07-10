@@ -26,6 +26,18 @@ class ParseInputTest {
         assertNull(parseInput(""))
     }
 
+    /**
+     * Only the FIRST #tag becomes the project. `String.replace(Regex, …)` strips every match, so the
+     * second tag was silently deleted from what the user typed — the text vanished without becoming
+     * anything. Extra tags stay in the title.
+     */
+    @Test
+    fun keepsTheExtraTagsInTheTitle() {
+        val r = parseInput("Llamar a Ana #trabajo #urgente")!!
+        assertEquals("trabajo", r.project)
+        assertEquals("Llamar a Ana #urgente", r.title)
+    }
+
     @Test
     fun tagOnlyKeepsRawAsTitle() {
         // "#casa" alone -> title falls back to the raw (never empty)
