@@ -53,7 +53,8 @@ class RealtimeSyncTest {
         snapshots: () -> Flow<List<TodoDto>> = { emptyFlow() },
         status: () -> Flow<Realtime.Status> = { emptyFlow() },
         onSnapshot: suspend () -> Unit = {},
-    ) = RealtimeSync(store, scope, authenticated, snapshots, status, onSnapshot)
+        refreshSession: suspend () -> Unit = {},
+    ) = RealtimeSync(store, scope, authenticated, snapshots, status, onSnapshot, refreshSession)
 
     // UnconfinedTestDispatcher is a factory FUNCTION, not a class — the type is TestDispatcher.
     private fun storeWith(remote: TodoRemote, dispatcher: TestDispatcher) =
@@ -139,6 +140,32 @@ class RealtimeSyncTest {
         sync(store, scope, status = { flowOf(Realtime.Status.CONNECTING, Realtime.Status.CONNECTED) }).start().join()
 
         assertEquals(0, remote.listCalls)                          // the snapshot flow's initial select covers it
+        scope.cancel()
+    }
+
+    /**
+     * A socket outage long enough to drop the connection is long enough to expire the access token.
+     * `TodoSyncWorker` already refreshes before it syncs; the reconnect path did not, so the
+     * gap-closing pull went out with whatever token happened to be in memory.
+     */
+    @Test fun reconnectAfterDrop_refreshesTheSessionBeforePulling() = runTest {
+        val d = UnconfinedTestDispatcher(testScheduler)
+        val scope = CoroutineScope(d)
+        val order = mutableListOf<String>()
+        val remote = object : TodoRemote by CountingRemote() {
+            override suspend fun list(userId: String): List<TodoDto> { order += "list"; return emptyList() }
+        }
+        val store = storeWith(remote, d)
+
+        sync(
+            store, scope,
+            status = {
+                flowOf(Realtime.Status.CONNECTED, Realtime.Status.DISCONNECTED, Realtime.Status.CONNECTED)
+            },
+            refreshSession = { order += "refresh" },
+        ).start().join()
+
+        assertEquals(listOf("refresh", "list"), order)
         scope.cancel()
     }
 

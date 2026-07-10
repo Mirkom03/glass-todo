@@ -34,6 +34,7 @@ class RealtimeSync(
     private val snapshots: () -> Flow<List<TodoDto>>,
     private val connectionStatus: () -> Flow<Realtime.Status>,
     private val onSnapshot: suspend () -> Unit = {}, // step 8 wires the Glance widget's updateAll here
+    private val refreshSession: suspend () -> Unit = {},
 ) {
     fun start(): Job = scope.launch {
         launch { refetchOnReconnect() }
@@ -65,7 +66,11 @@ class RealtimeSync(
                 Realtime.Status.CONNECTED -> {
                     if (droppedAfterConnect) {
                         droppedAfterConnect = false
-                        runCatching { store.refresh() }   // no session yet -> requireUid throws -> ignored
+                        // Refresh BEFORE pulling, exactly like TodoSyncWorker does. An outage long
+                        // enough to drop the socket is long enough to expire the access token, and
+                        // `refresh()` would then push and pull with a dead one. A failure here is not
+                        // fatal — the pull below reports it — so both stay inside one runCatching.
+                        runCatching { refreshSession(); store.refresh() }
                     }
                     everConnected = true
                 }
@@ -96,6 +101,7 @@ class RealtimeSync(
             snapshots = { client.from("todos").selectAsFlow(TodoDto::id) },
             connectionStatus = { client.realtime.status },
             onSnapshot = onSnapshot,
+            refreshSession = { AuthRepository(client).ensureFreshSession() },
         )
     }
 }
