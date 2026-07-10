@@ -51,6 +51,27 @@ class TodoDtoMappingTest {
         assertEquals(expected, dto.toEntity(SyncStatus.SYNCED).createdAt)
     }
 
+    /**
+     * Realtime does not go through PostgREST's JSON encoder: `postgres_changes` ships the column's
+     * NATIVE text (`2026-07-09 05:38:00.123456+00` — a space instead of `T`, and a two-digit offset).
+     * `OffsetDateTime.parse` rejects both, so `parseTimestampMillis` returned null and `toEntity` fell
+     * back to `System.currentTimeMillis()`: every realtime snapshot restamped `createdAt` to now,
+     * reshuffling the list (ORDER BY createdAt DESC) and then feeding that wrong value back to the
+     * server on the next drain, which sends `created_at`.
+     */
+    @Test
+    fun toEntity_parsesTheNativePostgresTextForm_asRealtimeEmitsIt() {
+        val expected = Instant.parse("2026-07-09T05:38:00.123Z").toEpochMilli()
+        val withMicros = TodoDto(id = "a", user_id = "u", title = "t", created_at = "2026-07-09 05:38:00.123456+00")
+        assertEquals(expected, withMicros.toEntity(SyncStatus.SYNCED).createdAt)
+
+        val whole = TodoDto(id = "a", user_id = "u", title = "t", created_at = "2026-07-09 05:38:00+00")
+        assertEquals(
+            Instant.parse("2026-07-09T05:38:00Z").toEpochMilli(),
+            whole.toEntity(SyncStatus.SYNCED).createdAt,
+        )
+    }
+
     @Test
     fun toEntity_missingOrGarbageTimestampFallsBackToNow() {
         val before = System.currentTimeMillis()
