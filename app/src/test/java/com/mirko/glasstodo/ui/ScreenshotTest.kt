@@ -38,7 +38,7 @@ class ScreenshotTest {
     private fun capture(name: String, state: TodoUiState) {
         compose.setContent {
             ListoTheme {
-                TodoScreenContent(state = state, onToggle = { _, _ -> }, onAdd = { _, _ -> })
+                TodoScreenContent(state = state, onToggle = { _, _ -> }, onAdd = { _, _ -> }, onOpen = {})
             }
         }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/app_$name.png")

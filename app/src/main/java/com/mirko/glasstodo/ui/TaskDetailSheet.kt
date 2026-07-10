@@ -1,6 +1,7 @@
 package com.mirko.glasstodo.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,10 +69,19 @@ fun TaskDetailContent(
 
     Column(modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 28.dp)) {
 
-        // The tick lives on the circle here too — the whole point of the redesign.
+        // The tick lives on the circle here too — the whole point of the redesign. The target is a
+        // 44dp box; the circle hangs at its start edge so it lands on the same left margin as the
+        // title, the tag and the labels below.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TaskCheck(task.done) { onToggle(!task.done) }
-            Spacer(Modifier.width(14.dp))
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clickable { onToggle(!task.done) },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                TaskCheck(task.done)
+            }
+            Spacer(Modifier.width(4.dp))
             Text(
                 if (task.done) "HECHA" else "PENDIENTE",
                 color = if (task.done) Cyan else Chalk3,

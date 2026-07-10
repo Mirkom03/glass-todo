@@ -28,8 +28,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -63,15 +65,41 @@ import com.mirko.glasstodo.ui.theme.Hairline
 import com.mirko.glasstodo.ui.theme.Ink
 import com.mirko.glasstodo.ui.theme.InkRaised
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoScreen(vm: TodoViewModel) {
     val state by vm.uiState.collectAsStateWithLifecycle()
+    var openId by rememberSaveable { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState()
+
     TodoScreenContent(
         state = state,
         onToggle = { id, done -> vm.toggle(id, done) },
         onAdd = { raw, urgency -> vm.add(raw, urgency) },
+        onOpen = { id -> openId = id },
         onErrorShown = { vm.errorShown() },
     )
+
+    // Read the open task from the SAME flow the list reads: an edit lands in Room and the sheet
+    // re-renders with it. Holding a copy here would go stale the moment realtime pushed a change,
+    // and a task deleted elsewhere would leave a sheet open over nothing.
+    val open = openId?.let { id -> state.todos.firstOrNull { it.id == id } }
+    if (open != null) {
+        TaskDetailSheet(
+            task = open,
+            sheetState = sheetState,
+            onDismiss = { openId = null },
+            onToggle = { done -> vm.toggle(open.id, done) },
+            onSave = { title, project, priority, notes ->
+                vm.update(open.id, title, project, priority, notes)
+                openId = null
+            },
+            onDelete = {
+                vm.delete(open.id)
+                openId = null
+            },
+        )
+    }
 }
 
 /**
@@ -87,6 +115,7 @@ fun TodoScreenContent(
     state: TodoUiState,
     onToggle: (String, Boolean) -> Unit,
     onAdd: (String, Urgency) -> Unit,
+    onOpen: (String) -> Unit = {},
     onErrorShown: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -123,6 +152,7 @@ fun TodoScreenContent(
                     TaskRow(
                         task = task,
                         onToggle = { onToggle(task.id, true) },
+                        onOpen = { onOpen(task.id) },
                         modifier = Modifier.animateItem(
                             fadeInSpec = tween(200),
                             placementSpec = spring(
@@ -139,6 +169,7 @@ fun TodoScreenContent(
                         TaskRow(
                             task = task,
                             onToggle = { onToggle(task.id, false) },
+                            onOpen = { onOpen(task.id) },
                             modifier = Modifier.animateItem(
                                 placementSpec = spring(
                                     dampingRatio = Spring.DampingRatioMediumBouncy,

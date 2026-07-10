@@ -57,6 +57,14 @@ class TodoViewModel(private val store: TodoStore) : ViewModel() {
         }
     }
 
+    fun update(id: String, title: String, project: String?, priority: Int, notes: String?) =
+        viewModelScope.launch {
+            runCatching { store.update(id, title, project, priority, notes) }.onFailure {
+                if (it is CancellationException) throw it
+                if (it.isPermanent()) errors.value = "No se pudo guardar; cambios revertidos"
+            }
+        }
+
     fun delete(id: String) = viewModelScope.launch {
         runCatching { store.delete(id) }.onFailure {
             if (it is CancellationException) throw it
