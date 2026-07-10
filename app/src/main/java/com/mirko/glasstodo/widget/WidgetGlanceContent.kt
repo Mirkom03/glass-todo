@@ -20,6 +20,7 @@ import androidx.glance.appwidget.lazy.LazyVerticalGrid
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.background
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
@@ -317,27 +318,20 @@ private fun TagTile(name: String, count: Int, all: Boolean, selected: Boolean) {
 
 @Composable
 private fun TodoRow(todo: TodoUi, showTag: Boolean = true, compact: Boolean = false) {
-    Row(
-        GlanceModifier
-            .fillMaxWidth()
-            .padding(top = 6.dp, bottom = 6.dp)
-            // THE tap fix. v1 gave every row the SAME mutable PendingIntent template and relied on
-            // per-row fill-in extras merging into it; launchers that drop the merge left
-            // `getStringExtra(EXTRA_ID) ?: return` and the checkbox did nothing. Glance registers one
-            // typed action per row — no template, nothing to merge — and the whole row is the target.
-            // The action carries the user's INTENT (the negation of what this row is showing), not
-            // just the id: deriving the new value from Room at tap time inverted the tap whenever
-            // Room had moved under a stale render («no puedo destickearlo», 2026-07-09).
-            .clickable(
-                actionRunCallback<ToggleTodoAction>(
-                    actionParametersOf(
-                        ToggleTodoAction.idKey to todo.id,
-                        ToggleTodoAction.doneKey to !todo.done,
-                    )
-                )
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    // The Row itself is NOT clickable: two sibling zones cover disjoint rectangles, so which action
+    // fires never depends on parent/child touch dispatch.
+    //
+    // Inside a LazyColumn, Glance compiles BOTH zones to RemoteViews.setOnClickFillInIntent against
+    // the collection's single, MUTABLE setPendingIntentTemplate (verified in the 1.1.1 bytecode:
+    // ApplyActionKt.applyAction branches on isLazyCollectionDescendant()). That is the same path the
+    // toggle already takes in production today — this is not a new mechanism. Each zone gets its own
+    // view id and its own unique data-Uri, so the two fill-ins cannot be mistaken for each other.
+    //
+    // Each action carries the user's INTENT (the negation of what this row SHOWS), never just the id:
+    // deriving the new value from Room at tap time inverted the tap whenever Room had moved under a
+    // stale render («no puedo destickearlo», 2026-07-09).
+    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+
         // Urgency reads as a rule on the leading edge. Normal shows nothing — the absence of a
         // signal IS the signal — and a done task never shouts, whatever its urgency was.
         val urgency = Urgency.of(todo.priority)
@@ -349,44 +343,75 @@ private fun TodoRow(todo: TodoUi, showTag: Boolean = true, compact: Boolean = fa
                     .cornerRadius(2.dp)
                     .background(ColorProvider(urgencyColor(urgency)))
             )
-            Spacer(GlanceModifier.width(8.dp))
         } else {
-            Spacer(GlanceModifier.width(11.dp))
+            Spacer(GlanceModifier.width(3.dp))
         }
 
-        // Deliberately NOT Glance's CheckBox. On API 31+ its translator makes the checkbox View both
-        // the text view AND the action target, and a CompoundButton is clickable by default — so a
-        // decorative CheckBox (onCheckedChange = null) swallows the touch across the whole row and
-        // the Row's PendingIntent never fires. An ImageView and a TextView are not clickable, so the
-        // tap reaches the Row. (This is exactly the bug v1.1.0 shipped with.)
+        // ZONE 1 — the tick. Glance has no minimumInteractiveComponentSize: the touch target IS the
+        // rendered box. Height is the scarce resource on a home screen and width is not, so the zone
+        // is paid for in width (39dp) and in the row's own vertical padding, never in row height.
+        //
+        // Deliberately an Image, never Glance's CheckBox: on API 31+ a CompoundButton is clickable and
+        // focusable at the View level and swallows the touch of the whole row (the v1.1.0 bug).
         // The drawables are the app's TaskCheck, frozen: a Chalk2 ring that fills with cyan.
-        Image(
-            provider = ImageProvider(if (todo.done) R.drawable.ic_check_on else R.drawable.ic_check_off),
-            contentDescription = if (todo.done) DONE_ICON_DESCRIPTION else PENDING_ICON_DESCRIPTION,
-            modifier = GlanceModifier.size(20.dp),
-        )
-        Spacer(GlanceModifier.width(10.dp))
-        Text(
-            todo.title,
-            // Compact placements: one full-width line per task, or a single wrapped title eats
-            // the only row that fits and the widget glances as nothing.
-            maxLines = if (compact) 1 else 2,
-            modifier = GlanceModifier.defaultWeight(),
-            style = TextStyle(
-                color = if (todo.done) chalk3 else chalk,
-                fontSize = 14.sp,
-                textDecoration = if (todo.done) TextDecoration.LineThrough else null,
-            ),
-        )
-        if (showTag) {
-            todo.project?.takeIf { it.isNotBlank() }?.let { tag ->
-                Spacer(GlanceModifier.width(8.dp))
-                // A typographic label, not a coloured chip: the accent belongs to the check.
+        Box(
+            modifier = GlanceModifier
+                .width(39.dp)
+                .padding(vertical = 6.dp)
+                .clickable(
+                    actionRunCallback<ToggleTodoAction>(
+                        actionParametersOf(
+                            ToggleTodoAction.idKey to todo.id,
+                            ToggleTodoAction.doneKey to !todo.done,
+                        )
+                    )
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                provider = ImageProvider(if (todo.done) R.drawable.ic_check_on else R.drawable.ic_check_off),
+                contentDescription = if (todo.done) DONE_ICON_DESCRIPTION else PENDING_ICON_DESCRIPTION,
+                modifier = GlanceModifier.size(20.dp),
+            )
+        }
+
+        // ZONE 2 — everything else opens the task. actionStartActivity is the one action that needs no
+        // trampoline: the fill-in points straight at the destination Activity.
+        Box(
+            modifier = GlanceModifier
+                .defaultWeight()
+                .padding(vertical = 6.dp)
+                .clickable(
+                    actionStartActivity<TaskDetailActivity>(
+                        actionParametersOf(TaskDetailActivity.idKey to todo.id)
+                    )
+                ),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    tag.uppercase(),
-                    maxLines = 1,
-                    style = TextStyle(color = chalk3, fontSize = 9.sp),
+                    todo.title,
+                    // Compact placements: one full-width line per task, or a single wrapped title eats
+                    // the only row that fits and the widget glances as nothing.
+                    maxLines = if (compact) 1 else 2,
+                    modifier = GlanceModifier.defaultWeight(),
+                    style = TextStyle(
+                        color = if (todo.done) chalk3 else chalk,
+                        fontSize = 14.sp,
+                        textDecoration = if (todo.done) TextDecoration.LineThrough else null,
+                    ),
                 )
+                if (showTag) {
+                    todo.project?.takeIf { it.isNotBlank() }?.let { tag ->
+                        Spacer(GlanceModifier.width(8.dp))
+                        // A typographic label, not a coloured chip: the accent belongs to the check.
+                        Text(
+                            tag.uppercase(),
+                            maxLines = 1,
+                            style = TextStyle(color = chalk3, fontSize = 9.sp),
+                        )
+                    }
+                }
             }
         }
     }

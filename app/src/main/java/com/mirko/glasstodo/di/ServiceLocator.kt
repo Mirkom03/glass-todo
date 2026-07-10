@@ -22,7 +22,13 @@ import kotlinx.coroutines.SupervisorJob
 object ServiceLocator {
 
     @Volatile private var storeRef: TodoStore? = null
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Process-lifetime scope. A write started from the detail sheet must survive the sheet's Activity
+     * finishing — `lifecycleScope` would cancel it halfway, leaving Room optimistic and the server
+     * untouched.
+     */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     fun store(context: Context): TodoStore = storeRef ?: synchronized(this) {
         storeRef ?: build(context.applicationContext).also { storeRef = it }

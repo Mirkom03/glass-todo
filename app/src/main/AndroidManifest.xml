@@ -25,11 +25,25 @@
             android:exported="false"
             android:theme="@android:style/Theme.DeviceDefault.Dialog" />
 
+        <!-- The detail sheet, opened by tapping a row in the widget. Translucent so the launcher stays
+             visible behind the sheet, and so the platform paints no surface of its own (Theme.*.Dialog
+             would, in Material You colours on API 31+, which is not this app's palette).
+             It must NOT declare android:screenOrientation: on API 26 a translucent activity that
+             requests an orientation throws "Only fullscreen opaque activities can request orientation". -->
+        <activity
+            android:name=".widget.TaskDetailActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Glance widget. Replaces the v1 RemoteViews collection widget (TodoWidgetProvider +
-             TodoWidgetService): its per-row taps rode a shared MUTABLE PendingIntent template plus
-             per-row fill-in extras, and the merge silently fails on some launchers -> onReceive hit
-             `getStringExtra(EXTRA_ID) ?: return` and the checkbox looked dead. Glance registers one
-             typed action per item, so there is no template and nothing to merge. -->
+             TodoWidgetService), whose per-row taps rode a hand-rolled PendingIntent template plus
+             per-row fill-in extras and failed silently on some launchers -> onReceive hit
+             `getStringExtra(EXTRA_ID) ?: return` and the checkbox looked dead.
+             Glance ALSO uses template + fill-in inside a LazyColumn — verified in the 1.1.1 bytecode,
+             ApplyActionKt.applyAction branches on isLazyCollectionDescendant(). The difference is that
+             it builds the template correctly (FLAG_MUTABLE) and binds one fill-in per view id, so a
+             row can carry two independent actions: the circle ticks, the rest opens the task. -->
         <receiver
             android:name=".widget.TodoGlanceReceiver"
             android:exported="false">
