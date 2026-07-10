@@ -44,6 +44,9 @@ class TodoViewModelTest {
         override suspend fun insert(dto: TodoDto) { failStatus?.let { throw RemoteException(it) } }
         override suspend fun upsert(dto: TodoDto) { failStatus?.let { throw RemoteException(it) } }
         override suspend fun setDone(id: String, done: Boolean) { failStatus?.let { throw RemoteException(it) } }
+        override suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?) {
+            failStatus?.let { throw RemoteException(it) }
+        }
         override suspend fun delete(id: String) { failStatus?.let { throw RemoteException(it) } }
     }
 

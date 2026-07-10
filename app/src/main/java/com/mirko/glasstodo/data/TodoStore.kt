@@ -127,6 +127,41 @@ class TodoStore(
             }
     }
 
+    /**
+     * Edit the fields the detail sheet owns. Same shape as [toggle]: Room first (PENDING), push
+     * after, settle/rollback GUARDED so a push that completes late cannot resurrect the values it
+     * carried over a newer edit. An edit that changes nothing never touches the network.
+     */
+    suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?) =
+        withContext(io) {
+            val prev = dao.byId(id) ?: return@withContext
+            if (prev.title == title && prev.project == project &&
+                prev.priority == priority && prev.notes == notes
+            ) return@withContext
+
+            dao.upsert(                                                                    // OPTIMISTIC
+                prev.copy(
+                    title = title, project = project, priority = priority, notes = notes,
+                    syncStatus = SyncStatus.PENDING, updatedAt = now(),
+                )
+            )
+            runCatching { remote.update(id, title, project, priority, notes) }
+                .onSuccess { dao.settleUpdate(id, title, project, priority, notes) }
+                .onFailure { err ->                                                        // ROLLBACK
+                    if (err.isPermanent()) {
+                        dao.rollbackUpdate(
+                            id = id,
+                            prevTitle = prev.title, prevProject = prev.project,
+                            prevPriority = prev.priority, prevNotes = prev.notes,
+                            prevStatus = prev.syncStatus,
+                            attemptedTitle = title, attemptedProject = project,
+                            attemptedPriority = priority, attemptedNotes = notes,
+                        )
+                    }
+                    throw err
+                }
+        }
+
     suspend fun delete(id: String) = withContext(io) {
         val prev = dao.byId(id) ?: return@withContext
         dao.upsert(prev.copy(deleted = true, syncStatus = SyncStatus.PENDING))                   // OPTIMISTIC soft-delete

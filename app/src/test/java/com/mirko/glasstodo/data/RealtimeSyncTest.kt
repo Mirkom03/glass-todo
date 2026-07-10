@@ -40,6 +40,7 @@ class RealtimeSyncTest {
         override suspend fun insert(dto: TodoDto) = Unit
         override suspend fun upsert(dto: TodoDto) = Unit
         override suspend fun setDone(id: String, done: Boolean) = Unit
+        override suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?) = Unit
         override suspend fun delete(id: String) = Unit
     }
 

@@ -43,6 +43,24 @@ class TodoRemoteImpl(private val client: SupabaseClient) : TodoRemote {
         }
     }
 
+    override suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?) {
+        remote {
+            // PostgrestUpdate has no `set(column, null)` — passing a null through the reified `set`
+            // does not compile. `setToNull` emits a real JSON null, which is what lets the sheet CLEAR
+            // a note or a tag; an omitted column would just leave the old server value in place.
+            val rows = client.from(TABLE).update({
+                set("title", title)
+                set("priority", priority)
+                if (project == null) setToNull("project") else set("project", project)
+                if (notes == null) setToNull("notes") else set("notes", notes)
+            }) {
+                select()
+                filter { eq("id", id) }
+            }.decodeList<TodoDto>()
+            requireAffected(rows, "update")
+        }
+    }
+
     override suspend fun delete(id: String) {
         // A delete that matches nothing is indistinguishable from "already gone", so we do not
         // require affected rows here. If RLS silently blocked it, the next pull brings the row back.

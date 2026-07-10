@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +39,7 @@ class TodoStoreTest {
         val rows = serverRows.toMutableList()
         val inserted = mutableListOf<TodoDto>()
         val upserted = mutableListOf<TodoDto>()
+        val updated = mutableListOf<TodoDto>()
         val deleted = mutableListOf<String>()
         val calls = mutableListOf<String>()          // ordering: proves push happens before pull
 
@@ -49,6 +51,14 @@ class TodoStoreTest {
         override suspend fun setDone(id: String, done: Boolean) {
             calls += "setDone"; boom()
             rows.replaceAll { if (it.id == id) it.copy(done = done) else it }
+        }
+        override suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?) {
+            calls += "update"; boom()
+            // A targeted UPDATE: it touches these four columns and nothing else — never `done`.
+            rows.replaceAll {
+                if (it.id == id) it.copy(title = title, project = project, priority = priority, notes = notes) else it
+            }
+            updated += TodoDto(id = id, user_id = "u1", title = title, project = project, priority = priority, notes = notes)
         }
         override suspend fun delete(id: String) { calls += "delete"; boom(); deleted += id; rows.removeAll { it.id == id } }
 
@@ -302,5 +312,102 @@ class TodoStoreTest {
         s.refresh()
         val ids = db.todoDao().observeAll().first().map { it.id }
         assertEquals(listOf("kept"), ids)
+    }
+
+    // --- update(): editar título / etiqueta / urgencia / descripción desde la hoja de detalle ---
+
+    private fun seed(notes: String? = null) = TodoEntity(
+        id = "1", userId = "u1", title = "viejo", project = "casa", priority = 0,
+        notes = notes, syncStatus = SyncStatus.SYNCED,
+    )
+
+    @Test fun update_isOptimistic_visibleBeforeTheServerAnswers() = runTest {
+        db.todoDao().upsert(seed())
+        val remote = FakeRemote()
+        store(remote).update("1", "nuevo", "aide", 2, "una descripción")
+
+        val e = db.todoDao().byId("1")!!
+        assertEquals("nuevo", e.title)
+        assertEquals("aide", e.project)
+        assertEquals(2, e.priority)
+        assertEquals("una descripción", e.notes)
+        assertEquals(SyncStatus.SYNCED, e.syncStatus)     // settled: el push fue bien
+        assertEquals(listOf("update"), remote.calls)
+    }
+
+    @Test fun update_clearsANoteAndATag_sendingRealNulls() = runTest {
+        db.todoDao().upsert(seed(notes = "algo que borrar"))
+        val remote = FakeRemote()
+        store(remote).update("1", "viejo", null, 0, null)
+
+        val e = db.todoDao().byId("1")!!
+        assertNull(e.notes)
+        assertNull(e.project)
+        assertNull(remote.updated.single().notes)
+        assertNull(remote.updated.single().project)
+    }
+
+    @Test fun update_rollsBack_onPermanentError() = runTest {
+        db.todoDao().upsert(seed(notes = "original"))
+        runCatching { store(FakeRemote(failStatus = 400)).update("1", "nuevo", "aide", 2, "cambiada") }
+
+        val e = db.todoDao().byId("1")!!
+        assertEquals("viejo", e.title)                    // revertido campo a campo
+        assertEquals("casa", e.project)
+        assertEquals(0, e.priority)
+        assertEquals("original", e.notes)
+        assertEquals(SyncStatus.SYNCED, e.syncStatus)     // y con el estado de sync que tenía antes
+    }
+
+    @Test fun update_keepsOptimistic_onTransientError() = runTest {
+        db.todoDao().upsert(seed())
+        runCatching { store(FakeRemote(failStatus = 503)).update("1", "nuevo", "casa", 0, "n") }
+
+        val e = db.todoDao().byId("1")!!
+        assertEquals("nuevo", e.title)                    // se conserva — el drain lo reintenta
+        assertEquals(SyncStatus.PENDING, e.syncStatus)
+    }
+
+    @Test fun update_onMissingRow_isANoOp() = runTest {
+        val remote = FakeRemote()
+        store(remote).update("no-existe", "x", null, 0, null)
+        assertEquals(emptyList<String>(), remote.calls)
+    }
+
+    @Test fun update_isANoOp_whenNothingChanged() = runTest {
+        db.todoDao().upsert(seed(notes = "igual"))
+        val remote = FakeRemote()
+        store(remote).update("1", "viejo", "casa", 0, "igual")
+        assertEquals(emptyList<String>(), remote.calls)   // no se toca la red por una edición vacía
+    }
+
+    /**
+     * The 2026-07-09 lesson, applied to edits: a push that completes late may only settle ITS OWN
+     * value. Here the first edit's push hangs while a second edit lands; when it resolves it must not
+     * mark the row SYNCED, because the row no longer holds what that push carried.
+     */
+    @Test fun update_aSlowFirstPushDoesNotClobberASecondEdit() = runTest {
+        db.todoDao().upsert(seed())
+        val arrived = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val base = FakeRemote()
+        val remote = object : TodoRemote by base {
+            var first = true
+            override suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?) {
+                if (first) { first = false; arrived.complete(Unit); gate.await() }
+                base.update(id, title, project, priority, notes)
+            }
+        }
+        val s = store(remote)
+
+        val slow = launch { s.update("1", "primera", "casa", 0, null) }
+        arrived.await()
+        s.update("1", "segunda", "casa", 0, null)         // la segunda edición gana
+        gate.complete(Unit)
+        slow.join()
+
+        val e = db.todoDao().byId("1")!!
+        assertEquals("segunda", e.title)                  // la última acción del usuario manda
+        assertEquals(SyncStatus.SYNCED, e.syncStatus)
     }
 }

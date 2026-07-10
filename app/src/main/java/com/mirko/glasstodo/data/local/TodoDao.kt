@@ -52,6 +52,33 @@ interface TodoDao {
     )
     suspend fun rollbackToggle(id: String, attempted: Boolean, prevDone: Boolean, prevStatus: SyncStatus)
 
+    // The same guard as settleToggle, widened to every field the detail sheet writes. `IS`, not `=`:
+    // in SQLite `project = NULL` is never true, so `=` would never match a row whose tag was cleared.
+    @Query(
+        """
+        UPDATE todos SET syncStatus = 'SYNCED'
+        WHERE id = :id AND title = :title AND project IS :project
+          AND priority = :priority AND notes IS :notes AND syncStatus = 'PENDING'
+        """
+    )
+    suspend fun settleUpdate(id: String, title: String, project: String?, priority: Int, notes: String?)
+
+    @Query(
+        """
+        UPDATE todos
+           SET title = :prevTitle, project = :prevProject, priority = :prevPriority,
+               notes = :prevNotes, syncStatus = :prevStatus
+         WHERE id = :id AND title = :attemptedTitle AND project IS :attemptedProject
+           AND priority = :attemptedPriority AND notes IS :attemptedNotes AND syncStatus = 'PENDING'
+        """
+    )
+    suspend fun rollbackUpdate(
+        id: String,
+        prevTitle: String, prevProject: String?, prevPriority: Int, prevNotes: String?,
+        prevStatus: SyncStatus,
+        attemptedTitle: String, attemptedProject: String?, attemptedPriority: Int, attemptedNotes: String?,
+    )
+
     @Query("DELETE FROM todos WHERE id = :id")
     suspend fun hardDelete(id: String)
 

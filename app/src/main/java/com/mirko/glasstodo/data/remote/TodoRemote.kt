@@ -9,5 +9,12 @@ interface TodoRemote {
     suspend fun upsert(dto: TodoDto)
 
     suspend fun setDone(id: String, done: Boolean)
+
+    /**
+     * A targeted UPDATE of the fields the detail sheet owns. Deliberately NOT `upsert(dto)`: a full
+     * DTO would also carry `done`, so a slow edit could clobber a toggle made on another device.
+     */
+    suspend fun update(id: String, title: String, project: String?, priority: Int, notes: String?)
+
     suspend fun delete(id: String)
 }
