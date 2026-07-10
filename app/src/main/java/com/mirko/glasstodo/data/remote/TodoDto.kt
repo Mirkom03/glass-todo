@@ -14,6 +14,7 @@ data class TodoDto(
     val project: String? = null,
     val priority: Int = 0,
     val done: Boolean = false,
+    val notes: String? = null,        // the detail sheet's description
     val created_at: String? = null,   // timestamptz ISO-8601; sent on insert so offline creations keep their real time
 )
 
@@ -24,11 +25,12 @@ fun parseTimestampMillis(iso: String?): Long? = iso?.let {
 
 fun TodoDto.toEntity(status: SyncStatus) = TodoEntity(
     id = id, userId = user_id, title = title, project = project,
-    priority = priority, done = done, syncStatus = status,
+    priority = priority, done = done, notes = notes, syncStatus = status,
     createdAt = parseTimestampMillis(created_at) ?: System.currentTimeMillis(),
 )
 
 fun TodoEntity.toDto() = TodoDto(
     id = id, user_id = userId, title = title, project = project, priority = priority, done = done,
+    notes = notes,
     created_at = Instant.ofEpochMilli(createdAt).toString(),
 )
