@@ -310,26 +310,6 @@ private fun AddDock(
 }
 
 @Composable
-private fun UrgencyChip(level: Urgency, selected: Boolean, onClick: () -> Unit) {
-    val accent = urgencyColor(level)
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) accent.copy(alpha = 0.16f) else Color.Transparent)
-            .border(1.dp, if (selected) accent else Hairline, RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(
-            level.label,
-            color = if (selected) Chalk else Chalk3,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-        )
-    }
-}
-
-@Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
     Column(modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Nada que hacer", color = Chalk, fontSize = 26.sp, fontWeight = FontWeight.Light)
