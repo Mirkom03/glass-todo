@@ -62,10 +62,13 @@ android {
     }
 
     sourceSets {
-        // MigrationTestHelper reads the exported schema JSONs from assets. Robolectric merges the
-        // unit-test source set's assets, so pointing `test` at app/schemas is what lets Migration1To2Test
-        // validate the migrated schema against 2.json without an emulator.
-        getByName("test") {
+        // MigrationTestHelper loads the exported schema JSONs from the assets of the context it is
+        // given. Under Robolectric that context reads `android_merged_assets`, which AGP writes into
+        // test_config.properties as mergeDebugAssets — the MAIN/BUILD-TYPE assets. There is no
+        // mergeDebugUnitTestAssets task, so a `test { assets }` entry is silently ignored.
+        // Hanging the schemas off the `debug` source set feeds mergeDebugAssets (which is what
+        // testDebugUnitTest sees) while keeping them out of the release APK.
+        getByName("debug") {
             assets.srcDir("$projectDir/schemas")
         }
     }

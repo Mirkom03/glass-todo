@@ -8,6 +8,7 @@ import com.mirko.glasstodo.data.SupabaseClient
 import com.mirko.glasstodo.data.TodoStore
 import androidx.glance.appwidget.updateAll
 import com.mirko.glasstodo.data.local.AppDatabase
+import com.mirko.glasstodo.data.local.MIGRATION_1_2
 import com.mirko.glasstodo.data.remote.TodoRemoteImpl
 import com.mirko.glasstodo.widget.TodoGlanceWidget
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +31,12 @@ object ServiceLocator {
     private fun build(ctx: Context): TodoStore {
         SupabaseClient.init()                       // idempotent
         val client = SupabaseClient.client
-        val db = Room.databaseBuilder(ctx, AppDatabase::class.java, DB_NAME).build()
+        // Without addMigrations, bumping the schema version crashes on open for every install coming
+        // from v1.3.3. Never fallbackToDestructiveMigration: it would drop the PENDING rows, which are
+        // the ONLY copy of a write the server has not seen yet.
+        val db = Room.databaseBuilder(ctx, AppDatabase::class.java, DB_NAME)
+            .addMigrations(MIGRATION_1_2)
+            .build()
         val store = TodoStore(db.todoDao(), TodoRemoteImpl(client), SupabaseAuthSource(client))
         // One long-lived realtime collector for the whole process; it waits for an authenticated
         // session before subscribing, so a signed-out cold start never wipes the local cache.

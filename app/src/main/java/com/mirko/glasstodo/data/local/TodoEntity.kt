@@ -14,6 +14,7 @@ data class TodoEntity(
     val project: String? = null,
     val priority: Int = 0,
     val done: Boolean = false,
+    val notes: String? = null,           // free-text description, edited from the detail sheet
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val deleted: Boolean = false,        // tombstone → soft delete, reappears on rollback
@@ -27,4 +28,5 @@ fun TodoEntity.toUi() = TodoUi(
     done = done,
     pending = syncStatus == SyncStatus.PENDING,
     priority = priority,
+    notes = notes,
 )
