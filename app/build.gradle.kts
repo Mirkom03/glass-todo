@@ -61,6 +61,15 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        // MigrationTestHelper reads the exported schema JSONs from assets. Robolectric merges the
+        // unit-test source set's assets, so pointing `test` at app/schemas is what lets Migration1To2Test
+        // validate the migrated schema against 2.json without an emulator.
+        getByName("test") {
+            assets.srcDir("$projectDir/schemas")
+        }
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true   // Robolectric/Roborazzi need merged resources
@@ -88,6 +97,12 @@ android {
             signingConfig = signingConfigs.findByName("release")
         }
     }
+}
+
+// Room exports each schema version to app/schemas/, versioned in git. Without this there is no JSON
+// for v1 and MigrationTestHelper cannot validate the 1->2 migration.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

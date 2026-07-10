@@ -10,7 +10,7 @@ class Converters {
     @TypeConverter fun toSync(s: String): SyncStatus = SyncStatus.valueOf(s)
 }
 
-@Database(entities = [TodoEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TodoEntity::class], version = 1, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun todoDao(): TodoDao
