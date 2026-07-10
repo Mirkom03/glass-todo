@@ -8,6 +8,44 @@
 
 # ⏭️ EMPIEZA AQUÍ
 
+## v1.4.1 — seis bugs, cinco de ellos de pérdida de datos (2026-07-10)
+
+Una caza adversarial (6 lentes, 3 refutadores por hallazgo) sacó 8 bugs confirmados. Entran 6; los dos
+que quedan fuera están abajo. **106 tests en verde**; los 5 tests nuevos fallaban antes del arreglo.
+
+- **`add` y `drainPending` sellaban con un `@Upsert` de fila entera sin `WHERE`** (`TodoStore.kt`).
+  Un tick, una edición o un borrado hechos mientras el push volaba quedaban machacados por el snapshot
+  pre-push, y la fila se marcaba SYNCED sin que el servidor hubiese visto el valor nuevo. Es la misma
+  familia que el «no puedo destickearlo» de 2026-07-09, en los dos caminos que se habían quedado sin
+  guarda. Arreglado con `TodoDao.settlePush`, hermano de `settleToggle`/`settleUpdate`.
+- **Los timestamps de realtime no parseaban** (`TodoDto.kt`). `postgres_changes` manda el texto nativo
+  de Postgres (`2026-07-09 05:38:00.123456+00`: espacio en vez de `T`, offset de dos dígitos), no el
+  ISO de PostgREST. `OffsetDateTime.parse` lo rechazaba → `createdAt = now()` → la lista se rebarajaba
+  y ese `now()` inventado volvía al servidor en el siguiente drain, que sí envía `created_at`.
+- **`QuickAddActivity` guardaba en el scope de la composición.** Rotar (o el propio `finish()`)
+  cancelaba la escritura a medias: la tarea se perdía. Ahora `ServiceLocator.appScope`, como
+  `TaskDetailActivity.commit`. Y `remember` → `rememberSaveable`: rotar ya no borra lo tecleado.
+- **La reconexión de realtime no refrescaba la sesión antes de tirar del servidor**
+  (`RealtimeSync.kt`), al contrario que `TodoSyncWorker`. Un corte largo caduca el token.
+- **`parseInput` se comía la segunda `#etiqueta`.** «Llamar a Ana #trabajo #urgente» perdía
+  «#urgente»: el texto desaparecía sin convertirse en nada. Ahora se queda en el título.
+- **`completed_at` no la escribía nadie, y no existía `updated_at`** → `supabase/003_server_timestamps.sql`.
+  Un trigger `BEFORE INSERT OR UPDATE` los mantiene el servidor. Cero código de app: si estas columnas
+  entrasen en `TodoDto`, `encodeDefaults = true` haría que el `upsert` del drain las machacase. La regla
+  es **las columnas que gobierna el servidor no entran en el DTO**.
+
+**Fuera de esta release (a propósito):**
+- *Lost update de la hoja de detalle* (`TaskDetailSheet.kt:64`): los borradores no se rehidratan si la
+  fila cambia por realtime con la hoja abierta, y «Guardar» pisa lo de fuera. Necesita diseño de
+  concurrencia de UI propio. Incidencia real baja (1 usuario, misma tarea en 2 dispositivos a la vez).
+- *Resurrección server-side*: si el `upsert` del drain aterriza **después** del `delete` del usuario en
+  una fila que el servidor nunca vio, el servidor la recrea y el siguiente reconcile la vuelve a bajar.
+  El arreglo mata la manifestación local, que es la común. Cerrarlo del todo (mutex, tabla de tombstones)
+  es desproporcionado para un usuario.
+
+**Falta verificar en el móvil:** rotar `QuickAdd` mientras se guarda (la tarea debe llegar igual) y
+rotar tras teclear (el texto y la urgencia deben seguir ahí).
+
 ## v1.4.0 — panel de detalle de tarea (2026-07-10) — **FALTA VERIFICAR EN EL MÓVIL**
 
 El círculo marca; el resto de la fila abre una hoja con la tarea entera (descripción editable,
