@@ -49,8 +49,8 @@ android {
         applicationId = "com.mirko.glasstodo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.3.3"
+        versionCode = 12
+        versionName = "1.4.0"
         buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

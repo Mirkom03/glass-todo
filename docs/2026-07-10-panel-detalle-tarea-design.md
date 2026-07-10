@@ -107,9 +107,17 @@ per row — no template, nothing to merge») y el equivalente de `AndroidManifes
 
 ### 4.2 App (`TaskRow`)
 
-`TaskRow(task, onToggle, onOpen)`. El `.clickable(onToggle)` de la `Row` pasa a `onOpen`; el
-`TaskCheck` conserva su `onToggle`. En Compose sí existe `minimumInteractiveComponentSize`, así que
-el círculo llega a 48dp de blanco sin coste de layout.
+`TaskRow(task, onToggle, onOpen)`, partida en las **mismas dos zonas hermanas** que el widget, con el
+padding vertical dentro de cada `clickable`. El tick queda con un blanco de 44×52dp y el círculo
+sigue midiendo 22dp.
+
+> **Corregido tras implementarlo (2026-07-10).** Este apartado decía que en Compose
+> `minimumInteractiveComponentSize()` daba el blanco de 48dp «sin coste de layout». **Es falso:**
+> crece el tamaño *medido*. Al aplicarlo, las filas pasaron de ~54dp a 78dp uniformes y los títulos se
+> desplazaron a la derecha. Se vio en el screenshot de Roborazzi, no se dedujo. La solución es la
+> misma que en el widget: pagar el blanco en ancho, no en alto.
+
+`TaskCheck` pasa a ser puramente visual; el tap lo posee quien lo envuelve.
 
 Se corrige el comentario de `TaskRow.kt:52` («the whole row is the tap target, exactly like the
 widget»), que vuelve a ser verdad con la nueva semántica.
@@ -331,10 +339,12 @@ el widget grande de ~5 filas a ~3.
 | La fila y la hoja se ven bien | `WidgetScreenshotTest`, `TaskDetailScreenshotTest` |
 | **Los dos taps funcionan en un launcher real** | **Manual, en el móvil.** Ver abajo. |
 
-> **`[no-automatizable: Robolectric no monta un AppWidgetHost]`** — Que el tap en el círculo marque y
-> el tap en el título abra la hoja **no lo puede firmar ningún test unitario**: los fill-in intents
-> los resuelve el proceso del launcher. Se verifica instalando el APK y tocando ambas zonas, en la
-> fila con urgencia y en la fila sin urgencia. Sin esa comprobación la feature **no se da por cerrada**.
+> **`[no-automatizable: Robolectric no monta un AppWidgetHost]`** — Lo que **sí** cubre un test:
+> `WidgetActionUnitTest.theCircleTicksAndTheRestOfTheRowOpensTheTask` prueba que cada fila registra
+> **dos acciones distintas en dos nodos distintos** (`onNode` falla si un matcher casa con más de uno).
+> Lo que **ningún test puede firmar** es que un launcher real despache esos dos fill-in intents a la
+> vista correcta. Se verifica instalando el APK y tocando ambas zonas, en la fila con urgencia y en la
+> fila sin urgencia. Sin esa comprobación la feature **no se da por cerrada**.
 
 Construir y testear en local (no a ciegas contra el CI):
 

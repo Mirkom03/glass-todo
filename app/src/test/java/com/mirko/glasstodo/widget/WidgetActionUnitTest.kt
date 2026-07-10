@@ -7,6 +7,7 @@ import androidx.glance.appwidget.testing.unit.isNotChecked
 import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.glance.testing.unit.assertHasStartActivityClickAction
 import androidx.glance.testing.unit.hasContentDescription
+import androidx.glance.testing.unit.hasStartActivityClickAction
 import androidx.glance.testing.unit.hasText
 import androidx.glance.testing.unit.hasTextEqualTo
 import com.mirko.glasstodo.domain.TodoUi
@@ -57,6 +58,42 @@ class WidgetActionUnitTest {
             hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(
                 ToggleTodoAction.idKey to "id-3", ToggleTodoAction.doneKey to true,
             ))
+        ).assertDoesNotExist()
+    }
+
+    /**
+     * The v1.4.0 split. Two independent actions per row, on two sibling nodes: the circle ticks, the
+     * rest opens the task. `onNode` fails when a matcher hits more than one node, so each assertion
+     * here also proves the two actions live on DIFFERENT nodes and cannot be confused.
+     *
+     * Inside a LazyColumn, Glance compiles both to their own RemoteViews.setOnClickFillInIntent
+     * against the collection's single MUTABLE PendingIntent template. What this test cannot prove is
+     * that a real launcher then dispatches them correctly — that is verified by hand on the device.
+     */
+    @Test
+    fun theCircleTicksAndTheRestOfTheRowOpensTheTask() = runGlanceAppWidgetUnitTest {
+        provideComposable { WidgetGlanceContent(listOf(pan, luz)) }
+
+        onNode(
+            hasRunCallbackClickAction<ToggleTodoAction>(actionParametersOf(
+                ToggleTodoAction.idKey to "id-1", ToggleTodoAction.doneKey to true,
+            ))
+        ).assertExists()
+        onNode(
+            hasStartActivityClickAction<TaskDetailActivity>(
+                actionParametersOf(TaskDetailActivity.idKey to "id-1")
+            )
+        ).assertExists()
+        onNode(
+            hasStartActivityClickAction<TaskDetailActivity>(
+                actionParametersOf(TaskDetailActivity.idKey to "id-2")
+            )
+        ).assertExists()
+        // A row that is not on screen carries no action at all — the id is not a template placeholder.
+        onNode(
+            hasStartActivityClickAction<TaskDetailActivity>(
+                actionParametersOf(TaskDetailActivity.idKey to "id-3")
+            )
         ).assertDoesNotExist()
     }
 

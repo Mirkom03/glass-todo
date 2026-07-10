@@ -8,6 +8,38 @@
 
 # ⏭️ EMPIEZA AQUÍ
 
+## v1.4.0 — panel de detalle de tarea (2026-07-10) — **FALTA VERIFICAR EN EL MÓVIL**
+
+El círculo marca; el resto de la fila abre una hoja con la tarea entera (descripción editable,
+título, etiqueta, urgencia, borrar). Misma hoja en la app y en el widget: un solo composable,
+`ui/TaskDetailSheet.kt`. Diseño y plan en `docs/2026-07-10-panel-detalle-tarea-*.md`.
+
+Código completo, **100 tests en verde**, APK debug construido. **Nada de esto lo puede firmar un test:**
+
+- [ ] Tap en el **círculo** de una tarea **sin urgencia** → se marca. Otra vez → se desmarca.
+- [ ] Tap en el **círculo** de una tarea **con urgencia** (barra de color) → se marca.
+- [ ] Tap en el **título** → sube la hoja, con el escritorio visible detrás.
+- [ ] Escribir descripción → «Guardar» → reabrir → la descripción está.
+- [ ] Borrar la descripción entera → «Guardar» → reabrir → sigue vacía. *(Prueba `setToNull`.)*
+- [ ] Arrastrar la hoja hacia abajo → se cierra sin cerrar la app.
+- [ ] **La app instalada arranca.** *(Prueba la migración de Room 1→2 sobre datos reales de la v1.)*
+
+Los fill-in intents los resuelve el proceso del launcher y Robolectric no monta un `AppWidgetHost`.
+`WidgetActionUnitTest.theCircleTicksAndTheRestOfTheRowOpensTheTask` prueba que la fila registra dos
+acciones distintas en dos nodos distintos; **que el launcher las despache bien, no**.
+
+### Bug de producción arreglado por el camino
+
+`supabase-kt` deja `encodeDefaults = false`, así que `toDto()` omitía del JSON todo campo igual a su
+default. `drainPending()` reenvía con `upsert(toDto())` y el `ON CONFLICT DO UPDATE` solo escribe las
+columnas presentes: **un des-tick hecho sin red se perdía en el sync** y el servidor conservaba
+`done = true`. Primo hermano del bug del 2026-07-09, una capa más abajo. Arreglado en `SupabaseJson`.
+
+Efecto lateral aceptado: el drain ahora reenvía la fila entera (last-write-wins más ancho). Ver §5.5
+del design doc antes de investigar cualquier «des-sincronización rara».
+
+---
+
 Los **dos rechazos de v1.3.0 están RESUELTOS** (2026-07-09): el widget ≠ app en v1.3.1 y el
 logo en v1.3.2. No queda trabajo de diseño pendiente; lo opcional sigue en «Next steps» (§10-12).
 
