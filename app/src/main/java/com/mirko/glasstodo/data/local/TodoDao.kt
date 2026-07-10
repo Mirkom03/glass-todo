@@ -63,6 +63,26 @@ interface TodoDao {
     )
     suspend fun settleUpdate(id: String, title: String, project: String?, priority: Int, notes: String?)
 
+    /**
+     * The same guard again, for the two paths that push a WHOLE row: `add`'s insert and the drain's
+     * upsert. Both used to settle with `@Upsert(snapshot.copy(SYNCED))`, which has no WHERE — so a
+     * tick, an edit or a delete made while the push was in flight got overwritten by the pre-push
+     * snapshot, and the row was marked SYNCED even though the server never saw the newer value.
+     *
+     * `deleted = 0` keeps a tombstone raised mid-push PENDING, so the drain still sends the delete.
+     * Zero rows affected is the CORRECT outcome when the row moved on (or was hard-deleted): the row
+     * stays PENDING and the next drain replays whatever it holds now.
+     */
+    @Query(
+        """
+        UPDATE todos SET syncStatus = 'SYNCED'
+        WHERE id = :id AND syncStatus = 'PENDING' AND deleted = 0
+          AND done = :done AND title = :title AND project IS :project
+          AND priority = :priority AND notes IS :notes
+        """
+    )
+    suspend fun settlePush(id: String, title: String, project: String?, priority: Int, done: Boolean, notes: String?)
+
     @Query(
         """
         UPDATE todos

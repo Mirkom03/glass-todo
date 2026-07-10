@@ -62,7 +62,12 @@ class TodoStore(
                     dao.hardDelete(row.id)
                 } else {
                     remote.upsert(row.toDto())
-                    dao.upsert(row.copy(syncStatus = SyncStatus.SYNCED))
+                    // Guarded, like every other settle: this push may only mark ITS OWN snapshot as
+                    // synced. A tick, an edit or a delete that landed while the upsert was in flight
+                    // leaves the WHERE unmatched, so the row stays PENDING and the next drain sends
+                    // the value it holds now — instead of being rewound (or resurrected) by a
+                    // full-row @Upsert of a snapshot that is already stale.
+                    dao.settlePush(row.id, row.title, row.project, row.priority, row.done, row.notes)
                 }
             }
             when {
@@ -103,7 +108,8 @@ class TodoStore(
         )
         dao.upsert(e)                                   // (1) OPTIMISTIC — visible instantly via Flow
         runCatching { remote.insert(e.toDto()) }
-            .onSuccess { dao.upsert(e.copy(syncStatus = SyncStatus.SYNCED)) }
+            // Guarded: the user can tick or edit a brand-new task before its insert comes back.
+            .onSuccess { dao.settlePush(e.id, e.title, e.project, e.priority, e.done, e.notes) }
             .onFailure { throw it }                     // stays PENDING → the drain replays it
     }
 

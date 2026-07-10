@@ -410,4 +410,72 @@ class TodoStoreTest {
         assertEquals("segunda", e.title)                  // la última acción del usuario manda
         assertEquals(SyncStatus.SYNCED, e.syncStatus)
     }
+
+    // --- the same guard, now for the two paths that still wrote back a whole pre-push snapshot ---
+    // `settleToggle`/`settleUpdate` taught `toggle` and `update` to settle only their OWN value, but
+    // `add` and `drainPending` kept doing `dao.upsert(snapshot.copy(SYNCED))` — a full-row @Upsert
+    // with no WHERE. Anything the user did to that row while the push was in flight got overwritten.
+
+    @Test fun add_aSlowInsertDoesNotClobberAConcurrentToggle() = runTest {
+        val arrived = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val base = FakeRemote()
+        val remote = object : TodoRemote by base {
+            override suspend fun insert(dto: TodoDto) { arrived.complete(Unit); gate.await(); base.insert(dto) }
+        }
+        val s = store(remote)
+
+        val slowAdd = launch { s.add("Comprar pan", "casa") }
+        arrived.await()                                            // optimistic row in Room, insert in flight
+        val id = db.todoDao().observeAll().first().single().id
+        s.toggle(id, true)                                         // the user ticks it before the insert lands
+        gate.complete(Unit)
+        slowAdd.join()
+
+        val e = db.todoDao().byId(id)!!
+        assertEquals(true, e.done)                                 // the tick survives the insert's completion
+        assertEquals(SyncStatus.SYNCED, e.syncStatus)
+    }
+
+    @Test fun drain_aSlowUpsertDoesNotClobberAConcurrentWrite() = runTest {
+        db.todoDao().upsert(
+            TodoEntity(id = "1", userId = "u1", title = "a", done = false, syncStatus = SyncStatus.PENDING)
+        )
+        val arrived = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val base = FakeRemote()
+        val remote = object : TodoRemote by base {
+            override suspend fun upsert(dto: TodoDto) { arrived.complete(Unit); gate.await(); base.upsert(dto) }
+        }
+        val s = store(remote)
+
+        val slowDrain = launch { s.drainPending() }
+        arrived.await()                                            // the drain is holding a pre-push snapshot
+        s.toggle("1", true)                                        // the user ticks it meanwhile
+        gate.complete(Unit)
+        slowDrain.join()
+
+        assertEquals(true, db.todoDao().byId("1")!!.done)          // the drain must not rewind the tick
+    }
+
+    @Test fun drain_doesNotResurrectARowDeletedDuringThePush() = runTest {
+        db.todoDao().upsert(
+            TodoEntity(id = "1", userId = "u1", title = "a", syncStatus = SyncStatus.PENDING)
+        )
+        val arrived = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val base = FakeRemote()
+        val remote = object : TodoRemote by base {
+            override suspend fun upsert(dto: TodoDto) { arrived.complete(Unit); gate.await(); base.upsert(dto) }
+        }
+        val s = store(remote)
+
+        val slowDrain = launch { s.drainPending() }
+        arrived.await()
+        db.todoDao().hardDelete("1")                               // the row is gone locally mid-push
+        gate.complete(Unit)
+        slowDrain.join()
+
+        assertNull(db.todoDao().byId("1"))                         // a settle must never re-insert it
+    }
 }
