@@ -22,7 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -40,10 +40,12 @@ class QuickAddActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            var text by remember { mutableStateOf("") }
-            var urgency by remember { mutableStateOf(Urgency.NORMAL) }
-            var tags by remember { mutableStateOf(emptyList<String>()) }
-            val scope = rememberCoroutineScope()
+            // rememberSaveable, not remember: this dialog Activity declares no configChanges, so a
+            // rotation (or a night-mode flip) destroys and recreates it and everything typed was gone.
+            // The urgency is kept as its Int priority — a plain Bundle type, no saver to argue about.
+            var text by rememberSaveable { mutableStateOf("") }
+            var priority by rememberSaveable { mutableStateOf(Urgency.NORMAL.priority) }
+            var tags by remember { mutableStateOf(emptyList<String>()) }   // reloaded by LaunchedEffect
 
             LaunchedEffect(Unit) {
                 tags = withContext(Dispatchers.IO) {
@@ -83,8 +85,8 @@ class QuickAddActivity : ComponentActivity() {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Urgency.entries.forEach { level ->
                             FilterChip(
-                                selected = urgency == level,
-                                onClick = { urgency = level },
+                                selected = priority == level.priority,
+                                onClick = { priority = level.priority },
                                 label = { Text(level.label) },
                             )
                         }
@@ -95,19 +97,21 @@ class QuickAddActivity : ComponentActivity() {
                         enabled = text.isNotBlank(),
                         onClick = {
                             val parsed = parseInput(text) ?: run { finish(); return@Button }
-                            val chosen = urgency
-                            scope.launch {
+                            val chosen = priority
+                            val app = applicationContext
+                            // ServiceLocator.appScope, not rememberCoroutineScope(): that scope dies
+                            // with the composition, so finishing the Activity — or rotating during the
+                            // save — cancelled the write halfway and the task was simply lost. Same
+                            // shape as TaskDetailActivity.commit().
+                            ServiceLocator.appScope.launch {
                                 // Opened from the widget, so the process may be cold with a dead token.
                                 runCatching { AuthRepository().ensureFreshSession() }
                                 // Same store the app and the widget observe. The row lands in Room
                                 // immediately; a failed push leaves it PENDING for the drain to replay.
-                                runCatching {
-                                    ServiceLocator.store(applicationContext)
-                                        .add(parsed.title, parsed.project, chosen.priority)
-                                }
-                                TodoGlanceWidget().updateAll(applicationContext)
-                                finish()
+                                runCatching { ServiceLocator.store(app).add(parsed.title, parsed.project, chosen) }
+                                TodoGlanceWidget().updateAll(app)
                             }
+                            finish()
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Guardar") }
